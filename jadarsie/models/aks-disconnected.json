@@ -1,0 +1,59 @@
+{
+  "apiVersion": "vlabs",
+  "location": "local",
+  "properties": {
+    "orchestratorProfile": {
+      "orchestratorType": "Kubernetes",
+      "orchestratorRelease": "1.11",
+      "kubernetesConfig": {
+        "kubernetesImageBase": "msazurestackdocker/",
+        "useInstanceMetadata": false,
+        "networkPlugin": "flannel"
+      }
+    },
+    "customCloudProfile": {
+      "environment": {
+        "name": "AzureStackCloud"
+      },
+      "identitySystem": "azure_ad",
+      "authenticationMethod": "client_secret",
+      "dependenciesLocation": "public",
+      "portalUrl": "https://portal.local.azurestack.external"
+    },
+    "masterProfile": {
+      "count": 1,
+      "distro": "aks",
+      "osDiskSizeGB": 200,
+      "vmSize": "Standard_D2_v2",
+      "dnsPrefix": "aks11dis2"
+    },
+    "agentPoolProfiles": [
+      {
+        "name": "linuxpool",
+        "osDiskSizeGB": 200,
+        "count": 2,
+        "vmSize": "Standard_D2_v2",
+        "distro": "aks",
+        "availabilityProfile": "AvailabilitySet",
+        "AcceleratedNetworkingEnabled": false
+      }
+    ],
+    "linuxProfile": {
+      "adminUsername": "azureuser",
+      "ssh": {
+        "publicKeys": [
+          {
+            "keyData": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDj6mYypajGx0OWYeeKvzVkFQiYLvCaCldaaNjyRdw2wPqyXkuKDEgtlpxfPJquNzKO1po+CqM0dTg7xhskboIQ9KAXyWRSlByQWeTXLFi85fHKgkbp1a8gujOhZDcapD72i5IfQC4I26+wgVXgrXiUe4lET1XWz7A2eb3zKCRKh8K6OfupiOQ8fbr+3uVZxVSPnPhFfgxnifUHm/IDAQk/PE2aFr4+gY7lysGcPPpjYnTPJZk7umqWi52ApYnSzpQ84NXvxEvNA216hbAIqfc/a52ehlQMIuCv3YjLOX6Q6CzNU8cSUBHTj0rcCpO2HSp6FRHDOhXywQhN1R819xQzaASs/iODH9aDfhPhKXld5PTdP9QLK0LKPA192Sbp8AtDGx5UJ/dYHOt3tCz71ZE6WruTxL3JbzY9qf6Do4BBEIsbbSFZ1VHdRFhx0TnpId7IjbmjPLlwyRUxiBbZBIguoYB80cUkjUx0TM1Xi6pnJYSVOUHbmuxsVw5Ve+Da9qVORFrIAYlR6cGJsSVMGPul69AlGANPqjDJyIvcDvwev9zbC1muMLdkdApS2xR9FDeiogXxFnz/xBvaregPPTF3WtH/kQIumusU5itiYLMwDEvQqGX05fPCg3Yl6b/P1BErnTvTy6g24c8SbsVtYiYzZRz59gW9T/XhUdhHhz2G6w== HC1n42r0715+Administrator@HC1n42r0715"
+          }
+        ]
+      }
+    },
+    "servicePrincipalProfile": {
+      "clientId": "e3ef30f6-56fe-451f-88ed-c05304933454",
+      "secret": "+WVGzy044/.?0N1+-L0lv-YTAaG?3tob"
+    },
+    "featureFlags": {
+      "BlockOutboundInternet": true
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "linuxpool",
+  "osDiskSizeGB": 200,
+  "count": 2,
+  "vmSize": "Standard_D2_v2",
+  "distro": "aks",
+  "availabilityProfile": "AvailabilitySet",
+  "AcceleratedNetworkingEnabled": false
+}

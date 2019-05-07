@@ -1,0 +1,5 @@
+PUBLISHER microsoft-aks
+OFFER aks
+SKU aks-ubuntu-1604-201904
+VERSION 2019.04.08
+OS TYPE Linux

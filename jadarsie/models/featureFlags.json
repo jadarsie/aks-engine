@@ -1,0 +1,9 @@
+{
+  "apiVersion": "vlabs",
+  "location": "local",
+  "properties": {
+    "featureFlags": {
+      "BlockOutboundInternet": true
+    }
+  }
+}
