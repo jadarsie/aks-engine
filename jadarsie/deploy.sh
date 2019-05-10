@@ -3,24 +3,31 @@
 CLUSTER_DEFINITION=$1
 DNS_PREFIX=$2
 
-SPN_CLIENT_ID="e3ef30f6-56fe-451f-88ed-c05304933454"
-SPN_CLIENT_SECRET="+WVGzy044/.?0N1+-L0lv-YTAaG?3tob"
-TENANT_SUBSCRIPTION_ID="1eb99b4d-ce92-4264-8b93-e51cb32c5e72"
+SPN_CLIENT_ID="f4900a0d-45b2-4cd6-960c-ee0a53d9033e"
+SPN_CLIENT_SECRET="azurestack"
+TENANT_SUBSCRIPTION_ID="5fcb4cb7-e97f-4388-a61d-736d7071742f"
 
-# cat $CLUSTER_DEFINITION | \
-# jq --arg DNS_PREFIX $DNS_PREFIX '.properties.masterProfile.dnsPrefix = $DNS_PREFIX' \
-# > $INPUT
+# ./aks-engine-local.exe deploy \
+# --location redmond \
+# --api-model $CLUSTER_DEFINITION \
+# --resource-group ${DNS_PREFIX}-rg \
+# --output-directory $DNS_PREFIX \
+# --client-id $SPN_CLIENT_ID \
+# --client-secret $SPN_CLIENT_SECRET \
+# --subscription-id $TENANT_SUBSCRIPTION_ID \
+# --azure-env AzureStackCloud
 
-# "featureFlags": {
-#   "BlockOutboundInternet": true
-# }
-
-./aks-engine-addon.exe deploy \
---location local \
+./aks-engine-local.exe deploy \
+--location redmond \
 --api-model $CLUSTER_DEFINITION \
 --resource-group ${DNS_PREFIX}-rg \
 --output-directory $DNS_PREFIX \
 --client-id $SPN_CLIENT_ID \
 --client-secret $SPN_CLIENT_SECRET \
 --subscription-id $TENANT_SUBSCRIPTION_ID \
+--auth-method client_certificate \
+--identity-system adfs \
+--certificate-path "C:\Users\jadarsie\Downloads\selfhost\Kcluster\Kcluster-1905081720.crt" \
+--private-key-path "C:\Users\jadarsie\Downloads\selfhost\Kcluster\Kcluster-1905081720.key" \
 --azure-env AzureStackCloud
+

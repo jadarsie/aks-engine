@@ -1,0 +1,60 @@
+{
+  "apiVersion": "vlabs",
+  "location": "redmond",
+  "properties": {
+    "orchestratorProfile": {
+      "orchestratorType": "Kubernetes",
+      "orchestratorRelease": "1.11",
+      "orchestratorVersion": "1.11.9",
+      "kubernetesConfig": {
+        "kubernetesImageBase": "msazurestackdocker/",
+        "useInstanceMetadata": false,
+        "networkPlugin": "flannel"
+      }
+    },
+    "customCloudProfile": {
+      "environment": {
+        "name": "AzureStackCloud"
+      },
+      "identitySystem": "adfs",
+      "authenticationMethod": "client_certificate",
+      "dependenciesLocation": "public",
+      "portalUrl": "https://portal.redmond.azurestack.corp.microsoft.com"
+    },
+    "masterProfile": {
+      "count": 1,
+      "distro": "aks",
+      "osDiskSizeGB": 200,
+      "vmSize": "Standard_D2_v2",
+      "dnsPrefix": "aks1"
+    },
+    "agentPoolProfiles": [
+      {
+        "name": "linuxpool",
+        "osDiskSizeGB": 200,
+        "count": 2,
+        "vmSize": "Standard_D2_v2",
+        "distro": "aks",
+        "availabilityProfile": "AvailabilitySet",
+        "AcceleratedNetworkingEnabled": false
+      }
+    ],
+    "linuxProfile": {
+      "adminUsername": "azureuser",
+      "ssh": {
+        "publicKeys": [
+          {
+            "keyData": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDle6s+/ZYsKi/eiNr+Pe472p2ETZjg/lWW9C2qPdquZ+tDX9KDGsr5g5+/0Av3VDMqjs9bsa7TGpUnn9JIlisDLuZ6g9rjHdgHv1B6AqV1RcA2aAsAsxel4Wehty29ef5dRlnvQ2yFTLLBzUzHs69Ib+UQJVvIafJ8COKaJUfQOeAdVI6CXUsiPf8i7HTwp8s+OrdPlSjSGNHt4DnAwwSqp58Ws98tqOV1TnyOt1vR9phyWDaEgK0Fj/eezCBt24tcKfL8gmt8ZXgHK/j4yYFMTMwQfgjFRZpYgke0FV+zEyZN/D0vrOAmX++3Omb6vOLWWLU47tM7YSnlYUPxFx35jxN/BfgFpwIxprhn74g/2GUMcadcVYSmufzdMv6ky807HGRcQ3JqtlyLRrqL3CZq1Ksq2OuGV+I63fL094U8hbS9KLNIHhwLFILLSyMYvq67uo5fjRwzGzbWzZ6ad6kloctDEWb9+Y1ZIsLgVs16GfPnW7j8Yf5XdswPw+A18euZymGFqOb72tqXzaCeLtSDk37xtMp6y4FtPm9+DHMX2B3RtE/DJXfGnp5LtNc88yPB5YT+ZJ7hJaZwFP/208mhhIxpIgRJGp+dCDKnpdBMB1Dgr5pmsXKUv+2iB/E9PDHZ21MDqossjESzx9g9KwI006aEE1kD1NX6syPKfZk6yw== jadarsie@microsoft.com"
+          }
+        ]
+      }
+    },
+    "servicePrincipalProfile": {
+      "clientId": "f4900a0d-45b2-4cd6-960c-ee0a53d9033e",
+      "keyvaultSecretRef": {
+        "vaultID": "/subscriptions/5fcb4cb7-e97f-4388-a61d-736d7071742f/resourceGroups/k8S-rg/providers/Microsoft.KeyVault/vaults/jadarsie-clients",
+        "secretName": "kube-secret"
+      }
+    }
+  }
+}
