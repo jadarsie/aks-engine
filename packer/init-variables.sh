@@ -5,7 +5,7 @@ CDIR=$(dirname "${BASH_SOURCE}")
 SETTINGS_JSON="${SETTINGS_JSON:-./packer/settings.json}"
 SP_JSON="${SP_JSON:-./packer/sp.json}"
 SUBSCRIPTION_ID="${SUBSCRIPTION_ID:-$(az account show -o json --query="id" | tr -d '"')}"
-STORAGE_ACCOUNT_NAME="aksimages$(date +%s)"
+STORAGE_ACCOUNT_NAME="jadarsiepacker"
 
 echo "Subscription ID: ${SUBSCRIPTION_ID}"
 echo "Service Principal Path: ${SP_JSON}"
