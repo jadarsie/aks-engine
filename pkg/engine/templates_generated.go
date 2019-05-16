@@ -11005,6 +11005,13 @@ configureK8sCustomCloud() {
         # shellcheck disable=SC2002
         cat "${AZURE_JSON_PATH}" | jq '.tenantId = "adfs"' > ${AZURE_JSON_PATH}
     fi
+
+    # Decrease eth0 MTU to mitigate Azure Stack's NRP issue
+    echo "iface eth0 inet dhcp" | sudo tee -a /etc/network/interfaces
+    echo "    post-up /sbin/ifconfig eth0 mtu 1312" | sudo tee -a /etc/network/interfaces
+    
+    ifconfig eth0 mtu 1312
+
     set -x
 }
 `)
@@ -18159,7 +18166,7 @@ $global:SubscriptionId = "{{WrapAsVariable "subscriptionId"}}"
 $global:ResourceGroup = "{{WrapAsVariable "resourceGroup"}}"
 $global:VmType = "{{WrapAsVariable "vmType"}}"
 $global:SubnetName = "{{WrapAsVariable "subnetName"}}"
-$global:MasterSubnet = "{{WrapAsParameter "masterSubnet"}}"
+$global:MasterSubnet = "{{GetWindowsMasterSubnetARMParam}}"
 $global:SecurityGroupName = "{{WrapAsVariable "nsgName"}}"
 $global:VNetName = "{{WrapAsVariable "virtualNetworkName"}}"
 $global:RouteTableName = "{{WrapAsVariable "routeTableName"}}"
