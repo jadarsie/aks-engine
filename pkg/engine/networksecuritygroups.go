@@ -140,6 +140,24 @@ func CreateNetworkSecurityGroup(cs *api.ContainerService) NetworkSecurityGroupAR
 			},
 		}
 		securityRules = append(securityRules, allowVnetOutbound)
+
+		if cs.Properties.FeatureFlags.IsFeatureEnabled("BlockOutboundInternet") {
+			linkLocalRule := network.SecurityRule{
+				Name: to.StringPtr("allow_link_local"),
+				SecurityRulePropertiesFormat: &network.SecurityRulePropertiesFormat{
+					Access:                   network.SecurityRuleAccessAllow,
+					Description:              to.StringPtr("Allow link-local traffic"),
+					DestinationAddressPrefix: to.StringPtr("169.254.0.0/16"),
+					DestinationPortRange:     to.StringPtr("*"),
+					Direction:                network.SecurityRuleDirectionOutbound,
+					Priority:                 to.Int32Ptr(130),
+					Protocol:                 network.SecurityRuleProtocolAsterisk,
+					SourceAddressPrefix:      to.StringPtr("VirtualNetwork"),
+					SourcePortRange:          to.StringPtr("*"),
+				},
+			}
+			securityRules = append(securityRules, linkLocalRule)
+		}
 	}
 
 	nsg := network.SecurityGroup{
