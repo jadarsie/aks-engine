@@ -1,14 +1,14 @@
 {
-   "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
-   "contentVersion": "1.0.0.0",
-   "parameters": {  
+	"$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
 		"artifactsLocation": {
 			"type": "string",
 			"minLength": 1,
 			"metadata": {
 				"description": "Artifacts Location - URL"
 			}
-        },
+		},
 		"apiVersionDeployments": {
 			"type": "string",
 			"minLength": 1,
@@ -16,14 +16,14 @@
 				"description": "Compute API Version"
 			}
 		},
-		"targetVMName":{
+		"targetVMName": {
 			"type": "string",
 			"minLength": 1,
 			"metadata": {
 				"description": "Name of the vm to run the "
 			}
 		},
-		"targetVMType":{
+		"targetVMType": {
 			"type": "string",
 			"minLength": 1,
 			"metadata": {
@@ -43,33 +43,33 @@
 				"description": "index in the pool of the current agent, used so that we can get the extension name right"
 			}
 		}
-   },
-   "variables": {  
+	},
+	"variables": {
 		"singleQuote": "'",
 		"initScriptUrl": "[concat(parameters('artifactsLocation'), 'extensions/hello-world-k8s/v1/hello-world-k8s.sh')]"
-   },
-   "resources": [  
-	{
-      "apiVersion": "[parameters('apiVersionDeployments')]",
-      "dependsOn": [],
-      "location": "[resourceGroup().location]",
-      "type": "Microsoft.Compute/virtualMachines/extensions",
-	  "name": "[concat(parameters('targetVMName'),'/cse', '-', parameters('targetVMType'), '-', parameters('vmIndex'))]", 
-      "properties": {
-        "publisher": "Microsoft.Azure.Extensions",
-        "type": "CustomScript",
-        "typeHandlerVersion": "2.0",
-        "autoUpgradeMinorVersion": true,
-        "settings": {
-			"fileUris": [ 
-			   "[variables('initScriptUrl')]" 
-			 ]
-		},
-        "protectedSettings": {
-			"commandToExecute": "[concat('/bin/bash -c \"/bin/bash ./hello-world-k8s.sh ', variables('singleQuote'), parameters('extensionParameters'), variables('singleQuote'), ' >> /var/log/azure/hello-world-provision.log 2>&1 &\" &')]"
-        }
-      }
-    }
+	},
+	"resources": [
+		{
+			"apiVersion": "2017-12-01",
+			"dependsOn": [],
+			"location": "[resourceGroup().location]",
+			"type": "Microsoft.Compute/virtualMachines/extensions",
+			"name": "[concat(parameters('targetVMName'),'/cse', '-', parameters('targetVMType'), '-', parameters('vmIndex'))]",
+			"properties": {
+				"publisher": "Microsoft.Azure.Extensions",
+				"type": "CustomScript",
+				"typeHandlerVersion": "2.0",
+				"autoUpgradeMinorVersion": true,
+				"settings": {
+					"fileUris": [
+						"[variables('initScriptUrl')]"
+					]
+				},
+				"protectedSettings": {
+					"commandToExecute": "[concat('/bin/bash -c \"/bin/bash ./hello-world-k8s.sh ', variables('singleQuote'), parameters('extensionParameters'), variables('singleQuote'), ' >> /var/log/azure/hello-world-provision.log 2>&1 &\" &')]"
+				}
+			}
+		}
 	],
-   "outputs": {  }
+	"outputs": {}
 }
