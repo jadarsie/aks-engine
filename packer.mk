@@ -4,6 +4,9 @@ build-packer:
 build-packer-windows:
 	@packer build -var-file=packer/settings.json packer/windows-vhd-builder.json
 
+build-packer-stack:
+	@packer build -var-file=packer/settings.json packer/stack-vhd-builder.json
+
 init-packer:
 	@./packer/init-variables.sh
 
@@ -15,6 +18,9 @@ run-packer: az-login
 
 run-packer-windows: az-login
 	@packer version && set -o pipefail && ($(MAKE) init-packer | tee packer-output) && ($(MAKE) build-packer-windows | tee -a packer-output)
+
+run-packer-stack: az-login
+	@packer version && set -o pipefail && ($(MAKE) init-packer | tee packer-output) && ($(MAKE) build-packer-stack | tee -a packer-output)
 
 az-copy: az-login
 	azcopy-preview copy "${OS_DISK_SAS}" "${CLASSIC_BLOB}${CLASSIC_SAS_TOKEN}"
