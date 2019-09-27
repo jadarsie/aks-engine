@@ -12,8 +12,8 @@ variables:
 phases:
 - phase: build_vhd
   queue:
-    name: Hosted Ubuntu 1604
-    timeoutInMinutes: 120
+    name: Self-hosted
+    timeoutInMinutes: 300
   steps:
   - script: |
       docker run --rm \

@@ -1,4 +1,9 @@
 #!/bin/bash
+#
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT license.
+
+source /home/packer/notice_source.sh
 
 VHD_LOGS_FILEPATH=/opt/azure/stack-install.complete
 
@@ -6,7 +11,10 @@ echo "Starting build on " $(date) > ${VHD_LOGS_FILEPATH}
 echo "Using kernel:" >> ${VHD_LOGS_FILEPATH}
 tee -a ${VHD_LOGS_FILEPATH} < /proc/version
 
-echo "PIPELINE WAS HERE" > /opt/azure/pipeline
+cleanUpContainerImages
+installTern
+generateNotice
+cleanTern
 
 df -h
 

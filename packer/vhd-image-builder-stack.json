@@ -40,16 +40,19 @@
     ],
     "provisioners": [
         {
-            "type": "shell",
-            "inline": [
-                "sudo mkdir -p /opt/azure/containers",
-                "sudo chown -R $USER /opt/azure/containers"
-            ]
-        },
-        {
             "type": "file",
             "source": "packer/configure-stack-vhd.sh",
             "destination": "/home/packer/configure-stack-vhd.sh"
+        },
+        {
+            "type": "file",
+            "source": "scripts/tern.sh",
+            "destination": "/home/packer/notice_source.sh"
+        },
+        {
+            "type": "file",
+            "source": "scripts/notice-header.txt",
+            "destination": "/home/packer/notice-header.txt"
         },
         {
             "type": "file",
