@@ -9,8 +9,7 @@
         "build_number": "{{env `BUILD_NUMBER`}}",
         "build_id": "{{env `BUILD_ID`}}",
         "commit": "{{env `GIT_VERSION`}}",
-        "feature_flags": "{{env `FEATURE_FLAGS`}}",
-        "ubuntu_sku": "{{env `UBUNTU_SKU`}}"
+        "feature_flags": "{{env `FEATURE_FLAGS`}}"
     },
     "builders": [
         {
@@ -25,15 +24,10 @@
             "storage_account": "{{user `storage_account_name`}}",
             "os_type": "Linux",
             "os_disk_size_gb": 30,
-            "image_publisher": "microsoft-aks",
-            "image_offer": "aks",
-            "image_sku": "aks-ubuntu-1604-201909",
-            "image_version": "2019.09.19",
-            "azure_tags": {
-                "os": "Linux",
-                "now": "{{user `create_time`}}",
-                "createdBy": "aks-engine-vhd-pipeline"
-            },
+            "image_publisher": "Canonical",
+            "image_offer": "UbuntuServer",
+            "image_sku": "18.04-LTS",
+            "image_version": "latest",
             "location": "{{user `location`}}",
             "vm_size": "{{user `vm_size`}}"
         }
@@ -41,29 +35,34 @@
     "provisioners": [
         {
             "type": "file",
-            "source": "packer/configure-stack-vhd.sh",
-            "destination": "/home/packer/configure-stack-vhd.sh"
-        },
-        {
-            "type": "file",
-            "source": "scripts/tern.sh",
-            "destination": "/home/packer/notice_source.sh"
-        },
-        {
-            "type": "file",
-            "source": "scripts/notice-header.txt",
-            "destination": "/home/packer/notice-header.txt"
+            "source": "packer/configure.sh",
+            "destination": "/home/packer/configure.sh"
         },
         {
             "type": "file",
             "source": "packer/cleanup-vhd.sh",
-            "destination": "/home/packer/cleanup-vhd.sh"
+            "destination": "/home/packer/cleanup.sh"
+        },
+        {
+            "type": "file",
+            "source": "packer/packer_source.sh",
+            "destination": "/home/packer/packer_source.sh"
+        },
+        {
+            "type": "file",
+            "source": "parts/k8s/cloud-init/artifacts/cse_install.sh",
+            "destination": "/home/packer/provision_installs.sh"
+        },
+        {
+            "type": "file",
+            "source": "parts/k8s/cloud-init/artifacts/cse_helpers.sh",
+            "destination": "/home/packer/provision_source.sh"
         },
         {
             "type": "shell",
             "inline": [
-                "sudo BUILD_NUMBER={{user `build_number`}} BUILD_ID={{user `build_id`}} COMMIT={{user `commit`}} /bin/bash -ux /home/packer/configure-stack-vhd.sh",
-                "sudo /bin/bash -eux /home/packer/cleanup-vhd.sh",
+                "sudo BUILD_NUMBER={{user `build_number`}} BUILD_ID={{user `build_id`}} COMMIT={{user `commit`}} /bin/bash -ux /home/packer/configure.sh",
+                "sudo /bin/bash -eux /home/packer/cleanup.sh",
                 "sudo /usr/sbin/waagent -force -deprovision+user && export HISTSIZE=0 && sync || exit 125"
             ]
         }
