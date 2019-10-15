@@ -29142,6 +29142,9 @@ apiVersion: v1
 metadata:
   name: healthmodel-replicaset-service
   namespace: kube-system
+  labels:
+    kubernetes.io/cluster-service: "true"
+    addonmanager.kubernetes.io/mode: Reconcile
 spec:
   selector:
     rsName: "omsagent-rs"
@@ -29155,6 +29158,9 @@ kind: CustomResourceDefinition
 metadata:
   name: healthstates.azmon.container.insights
   namespace: kube-system
+  labels:
+    kubernetes.io/cluster-service: "true"
+    addonmanager.kubernetes.io/mode: Reconcile
 spec:
   group: azmon.container.insights
   version: v1
