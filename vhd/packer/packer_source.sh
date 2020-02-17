@@ -43,6 +43,8 @@ copyPackerFiles() {
   KUBELET_SERVICE_DEST=/etc/systemd/system/kubelet.service
   DOCKER_CLEAR_MOUNT_PROPAGATION_FLAGS_SRC=/home/packer/docker_clear_mount_propagation_flags.conf
   DOCKER_CLEAR_MOUNT_PROPAGATION_FLAGS_DEST=/etc/systemd/system/docker.service.d/clear_mount_propagation_flags.conf
+  COLLECT_LOGS_SRC=/home/packer/collect-logs.sh
+  COLLECT_LOGS_DEST=/opt/azure/containers/collect-logs.sh
   NOTICE_SRC=/home/packer/NOTICE.txt
   NOTICE_DEST=/NOTICE.txt
   if [[ ${UBUNTU_RELEASE} == "16.04" ]]; then
