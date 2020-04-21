@@ -183,36 +183,27 @@ func (ccc *CustomCloudConfig) SetEnvironment() error {
 			"--endpoint-active-directory", ccc.ActiveDirectoryEndpoint,
 			"--endpoint-active-directory-graph-resource-id", ccc.GraphEndpoint)
 	}
-	out, err := cmd.CombinedOutput()
-	if err != nil {
+	if out, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("output:%s\n", out)
 		return err
 	}
 
 	if ccc.TimeoutCommands {
-		cmd = exec.Command("timeout", "60", "az", "cloud", "set",
-			"-n", environmentName)
-
+		cmd = exec.Command("timeout", "60", "az", "cloud", "set", "-n", environmentName)
 	} else {
-		cmd = exec.Command("az", "cloud", "set",
-			"-n", environmentName)
+		cmd = exec.Command("az", "cloud", "set", "-n", environmentName)
 	}
-	out, err = cmd.CombinedOutput()
-	if err != nil {
+	if out, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("output:%s\n", out)
 		return err
 	}
 
 	if ccc.TimeoutCommands {
-		cmd = exec.Command("timeout", "60", "az", "cloud", "update",
-			"--profile", ccc.APIProfile)
-
+		cmd = exec.Command("timeout", "60", "az", "cloud", "update", "--profile", ccc.APIProfile)
 	} else {
-		cmd = exec.Command("az", "cloud", "update",
-			"--profile", ccc.APIProfile)
+		cmd = exec.Command("az", "cloud", "update", "--profile", ccc.APIProfile)
 	}
-	out, err = cmd.CombinedOutput()
-	if err != nil {
+	if out, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("output:%s\n", out)
 		return err
 	}
