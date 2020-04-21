@@ -111,7 +111,15 @@ docker run --rm \
 -e SKIP_TEST="${SKIP_TESTS}" \
 -e GINKGO_FOCUS="${GINKGO_FOCUS}" \
 -e GINKGO_SKIP="${GINKGO_SKIP}" \
-"${DEV_IMAGE}" make test-kubernetes || exit 1
+-e API_PROFILE="${API_PROFILE}" \
+-e LOCATION="${LOCATION}" \
+-e CUSTOM_CLOUD_FQDN="${CUSTOM_CLOUD_FQDN}" \
+-e IDENTITY_SYSTEM="${IDENTITY_SYSTEM}" \
+-e AUTHENTICATION_METHOD="${AUTHENTICATION_METHOD}" \
+-e CUSTOM_CLOUD_CLIENT_ID="${CUSTOM_CLOUD_CLIENT_ID}" \
+-e CUSTOM_CLOUD_SECRET="${CUSTOM_CLOUD_SECRET}" \
+-e ENVIRONMENT_NAME="${ENVIRONMENT_NAME}" \
+"${DEV_IMAGE}" make test-setup-azs test-kubernetes || exit 1
 
 if [ "${UPGRADE_CLUSTER}" = "true" ] || [ "${SCALE_CLUSTER}" = "true" ] || [ -n "$ADD_NODE_POOL_INPUT" ]; then
   # shellcheck disable=SC2012
@@ -201,7 +209,15 @@ if [ -n "$ADD_NODE_POOL_INPUT" ]; then
     -e GINKGO_FOCUS="${GINKGO_FOCUS}" \
     -e SKIP_TEST=${SKIP_TESTS_AFTER_ADD_POOL} \
     -e ADD_NODE_POOL_INPUT=${ADD_NODE_POOL_INPUT} \
-    ${DEV_IMAGE} make test-kubernetes || exit 1
+    -e API_PROFILE="${API_PROFILE}" \
+    -e LOCATION="${LOCATION}" \
+    -e CUSTOM_CLOUD_FQDN="${CUSTOM_CLOUD_FQDN}" \
+    -e IDENTITY_SYSTEM="${IDENTITY_SYSTEM}" \
+    -e AUTHENTICATION_METHOD="${AUTHENTICATION_METHOD}" \
+    -e CUSTOM_CLOUD_CLIENT_ID="${CUSTOM_CLOUD_CLIENT_ID}" \
+    -e CUSTOM_CLOUD_SECRET="${CUSTOM_CLOUD_SECRET}" \
+    -e ENVIRONMENT_NAME="${ENVIRONMENT_NAME}" \
+    ${DEV_IMAGE} make test-setup-azs test-kubernetes || exit 1
 fi
 
 if [ "${SCALE_CLUSTER}" = "true" ]; then
@@ -251,7 +267,15 @@ if [ "${SCALE_CLUSTER}" = "true" ]; then
     -e GINKGO_FOCUS="${GINKGO_FOCUS}" \
     -e SKIP_TEST=${SKIP_TESTS_AFTER_SCALE_DOWN} \
     -e ADD_NODE_POOL_INPUT=${ADD_NODE_POOL_INPUT} \
-    ${DEV_IMAGE} make test-kubernetes || exit 1
+    -e API_PROFILE="${API_PROFILE}" \
+    -e LOCATION="${LOCATION}" \
+    -e CUSTOM_CLOUD_FQDN="${CUSTOM_CLOUD_FQDN}" \
+    -e IDENTITY_SYSTEM="${IDENTITY_SYSTEM}" \
+    -e AUTHENTICATION_METHOD="${AUTHENTICATION_METHOD}" \
+    -e CUSTOM_CLOUD_CLIENT_ID="${CUSTOM_CLOUD_CLIENT_ID}" \
+    -e CUSTOM_CLOUD_SECRET="${CUSTOM_CLOUD_SECRET}" \
+    -e ENVIRONMENT_NAME="${ENVIRONMENT_NAME}" \
+    ${DEV_IMAGE} make test-setup-azs test-kubernetes || exit 1
 fi
 
 if [ "${UPGRADE_CLUSTER}" = "true" ]; then
@@ -313,7 +337,15 @@ if [ "${UPGRADE_CLUSTER}" = "true" ]; then
       -e GINKGO_FOCUS="${GINKGO_FOCUS}" \
       -e SKIP_TEST=${SKIP_TESTS_AFTER_UPGRADE} \
       -e ADD_NODE_POOL_INPUT=${ADD_NODE_POOL_INPUT} \
-      ${DEV_IMAGE} make test-kubernetes || exit 1
+      -e API_PROFILE="${API_PROFILE}" \
+      -e LOCATION="${LOCATION}" \
+      -e CUSTOM_CLOUD_FQDN="${CUSTOM_CLOUD_FQDN}" \
+      -e IDENTITY_SYSTEM="${IDENTITY_SYSTEM}" \
+      -e AUTHENTICATION_METHOD="${AUTHENTICATION_METHOD}" \
+      -e CUSTOM_CLOUD_CLIENT_ID="${CUSTOM_CLOUD_CLIENT_ID}" \
+      -e CUSTOM_CLOUD_SECRET="${CUSTOM_CLOUD_SECRET}" \
+      -e ENVIRONMENT_NAME="${ENVIRONMENT_NAME}" \
+      ${DEV_IMAGE} make test-setup-azs test-kubernetes || exit 1
   done
 fi
 
@@ -364,5 +396,13 @@ if [ "${SCALE_CLUSTER}" = "true" ]; then
     -e GINKGO_FOCUS="${GINKGO_FOCUS}" \
     -e SKIP_TEST=${SKIP_TESTS_AFTER_SCALE_UP} \
     -e ADD_NODE_POOL_INPUT=${ADD_NODE_POOL_INPUT} \
-    ${DEV_IMAGE} make test-kubernetes || exit 1
+    -e API_PROFILE="${API_PROFILE}" \
+    -e LOCATION="${LOCATION}" \
+    -e CUSTOM_CLOUD_FQDN="${CUSTOM_CLOUD_FQDN}" \
+    -e IDENTITY_SYSTEM="${IDENTITY_SYSTEM}" \
+    -e AUTHENTICATION_METHOD="${AUTHENTICATION_METHOD}" \
+    -e CUSTOM_CLOUD_CLIENT_ID="${CUSTOM_CLOUD_CLIENT_ID}" \
+    -e CUSTOM_CLOUD_SECRET="${CUSTOM_CLOUD_SECRET}" \
+    -e ENVIRONMENT_NAME="${ENVIRONMENT_NAME}" \
+    ${DEV_IMAGE} make test-setup-azs test-kubernetes || exit 1
 fi

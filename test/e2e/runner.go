@@ -40,18 +40,15 @@ func main() {
 	cfg.CurrentWorkingDir = cwd
 
 	if cfg.IsAzureStackCloud() {
-		cccfg, err = config.ParseCustomCloudConfig()
-
-		if err != nil {
-			log.Fatalf("Error while trying to parse custom cloud configuration: %s\n", err)
-		}
-		err = cfg.UpdateCustomCloudClusterDefinition(cccfg)
-		if err != nil {
-			log.Fatalf("Error while trying to update  cluster definition: %s\n", cfg.ClusterDefinition)
-		}
-		cccfg.SetEnvironment()
-		if err != nil {
-			log.Fatalf("Error while trying to set environment to azure account! %s\n", err)
+		if cfg.Name == "" {
+			cccfg, err = config.ParseCustomCloudConfig()
+			if err != nil {
+				log.Fatalf("Error while trying to parse custom cloud configuration: %s\n", err)
+			}
+			err = cfg.UpdateCustomCloudClusterDefinition(cccfg)
+			if err != nil {
+				log.Fatalf("Error while trying to update  cluster definition: %s\n", cfg.ClusterDefinition)
+			}
 		}
 	}
 

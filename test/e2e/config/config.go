@@ -70,6 +70,7 @@ type CustomCloudConfig struct {
 	APIProfile                   string `envconfig:"API_PROFILE"`
 	PortalURL                    string `envconfig:"PORTAL_ENDPOINT"`
 	TimeoutCommands              bool
+	EnvironmentName              string `envconfig:"ENVIRONMENT_NAME"`
 }
 
 const (
@@ -110,9 +111,8 @@ func (c *Config) GetKubeConfig() string {
 
 // IsAzureStackCloud returns true if the cloud is AzureStack
 func (c *Config) IsAzureStackCloud() bool {
-	clusterDefinitionFullPath := fmt.Sprintf("%s/%s", c.CurrentWorkingDir, c.ClusterDefinition)
-	cs := parseVlabsContainerSerice(clusterDefinitionFullPath)
-	return cs.Properties.IsAzureStackCloud()
+	val, ok := os.LookupEnv("ENVIRONMENT_NAME")
+	if ok && strings.EqualFold(val, "AzureStackCloud")
 }
 
 // UpdateCustomCloudClusterDefinition updates the cluster definition from environment variables
@@ -158,57 +158,6 @@ func parseVlabsContainerSerice(clusterDefinitionFullPath string) api.VlabsARMCon
 		log.Fatalf("Fail to unmarshal file %q , err -  %q", clusterDefinitionFullPath, err)
 	}
 	return cs
-}
-
-// SetEnvironment will set the cloud context
-func (ccc *CustomCloudConfig) SetEnvironment() error {
-	var cmd *exec.Cmd
-	environmentName := fmt.Sprintf("AzureStack%v", time.Now().Unix())
-	if ccc.TimeoutCommands {
-		cmd = exec.Command("timeout", "60", "az", "cloud", "register",
-			"-n", environmentName,
-			"--endpoint-resource-manager", ccc.ResourceManagerEndpoint,
-			"--suffix-storage-endpoint", ccc.StorageEndpointSuffix,
-			"--suffix-keyvault-dns", ccc.KeyVaultDNSSuffix,
-			"--endpoint-active-directory-resource-id", ccc.ServiceManagementEndpoint,
-			"--endpoint-active-directory", ccc.ActiveDirectoryEndpoint,
-			"--endpoint-active-directory-graph-resource-id", ccc.GraphEndpoint)
-	} else {
-		cmd = exec.Command("az", "cloud", "register",
-			"-n", environmentName,
-			"--endpoint-resource-manager", ccc.ResourceManagerEndpoint,
-			"--suffix-storage-endpoint", ccc.StorageEndpointSuffix,
-			"--suffix-keyvault-dns", ccc.KeyVaultDNSSuffix,
-			"--endpoint-active-directory-resource-id", ccc.ServiceManagementEndpoint,
-			"--endpoint-active-directory", ccc.ActiveDirectoryEndpoint,
-			"--endpoint-active-directory-graph-resource-id", ccc.GraphEndpoint)
-	}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("output:%s\n", out)
-		return err
-	}
-
-	if ccc.TimeoutCommands {
-		cmd = exec.Command("timeout", "60", "az", "cloud", "set", "-n", environmentName)
-	} else {
-		cmd = exec.Command("az", "cloud", "set", "-n", environmentName)
-	}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("output:%s\n", out)
-		return err
-	}
-
-	if ccc.TimeoutCommands {
-		cmd = exec.Command("timeout", "60", "az", "cloud", "update", "--profile", ccc.APIProfile)
-	} else {
-		cmd = exec.Command("az", "cloud", "update", "--profile", ccc.APIProfile)
-	}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("output:%s\n", out)
-		return err
-	}
-
-	return nil
 }
 
 // SetKubeConfig will set the KUBECONIFG env var

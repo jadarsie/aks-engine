@@ -27,3 +27,6 @@ test-kubernetes:
 
 test-azure-constants:
 	./scripts/azure-const.sh
+
+test-setup-azs:
+	./scripts/az-cloud-register.sh
