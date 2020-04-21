@@ -48,6 +48,7 @@ type Config struct {
 	BlockSSHPort        bool   `envconfig:"BLOCK_SSH" default:"false"`
 	AddNodePoolInput    string `envconfig:"ADD_NODE_POOL_INPUT" default:""`
 	TestPVC             bool   `envconfig:"TEST_PVC" default:"false"`
+	EnvironmentName     string `envconfig:"ENVIRONMENT_NAME"`
 }
 
 // CustomCloudConfig holds configurations for custom clould
@@ -110,9 +111,8 @@ func (c *Config) GetKubeConfig() string {
 
 // IsAzureStackCloud returns true if the cloud is AzureStack
 func (c *Config) IsAzureStackCloud() bool {
-	clusterDefinitionFullPath := fmt.Sprintf("%s/%s", c.CurrentWorkingDir, c.ClusterDefinition)
-	cs := parseVlabsContainerSerice(clusterDefinitionFullPath)
-	return cs.Properties.IsAzureStackCloud()
+	val, ok := os.LookupEnv("ENVIRONMENT_NAME")
+	return ok && strings.EqualFold(val, "AzureStackCloud")
 }
 
 // UpdateCustomCloudClusterDefinition updates the cluster definition from environment variables
