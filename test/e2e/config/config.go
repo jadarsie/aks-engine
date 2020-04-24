@@ -166,7 +166,9 @@ func (ccc *CustomCloudConfig) SetEnvironment() error {
 	var err error
 
 	azsSelfSignedCaPath := "/aks-engine/Certificates.pem"
-	pythonCaCertPath := "/usr/local/lib/python2.7/dist-packages/certifi/cacert.pem"
+	// Extract "X.XX" out of "Python X.XX.XX"
+	pythonVersion := `$(python3 -V | grep -o [0-9].[0-9]*. | grep -o [0-9].[0-9]*)`
+	pythonCaCertPath := fmt.Sprintf(`/usr/local/lib/python%s/dist-packages/certifi/cacert.pem`, pythonVersion)
 	if _, err = os.Stat(azsSelfSignedCaPath); err == nil {
 		if _, err = os.Stat(pythonCaCertPath); err == nil {
 			cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("cat %s >> %s", azsSelfSignedCaPath, pythonCaCertPath))
@@ -185,7 +187,7 @@ func (ccc *CustomCloudConfig) SetEnvironment() error {
 			"--suffix-storage-endpoint", ccc.StorageEndpointSuffix,
 			"--suffix-keyvault-dns", ccc.KeyVaultDNSSuffix,
 			"--endpoint-active-directory-resource-id", ccc.ServiceManagementEndpoint,
-			"--endpoint-active-directory", ccc.ActiveDirectoryEndpoint+"/adfs",
+			"--endpoint-active-directory", ccc.ActiveDirectoryEndpoint,
 			"--endpoint-active-directory-graph-resource-id", ccc.GraphEndpoint)
 	} else {
 		cmd = exec.Command("az", "cloud", "register",
@@ -194,7 +196,7 @@ func (ccc *CustomCloudConfig) SetEnvironment() error {
 			"--suffix-storage-endpoint", ccc.StorageEndpointSuffix,
 			"--suffix-keyvault-dns", ccc.KeyVaultDNSSuffix,
 			"--endpoint-active-directory-resource-id", ccc.ServiceManagementEndpoint,
-			"--endpoint-active-directory", ccc.ActiveDirectoryEndpoint+"/adfs",
+			"--endpoint-active-directory", ccc.ActiveDirectoryEndpoint,
 			"--endpoint-active-directory-graph-resource-id", ccc.GraphEndpoint)
 	}
 	if out, err := cmd.CombinedOutput(); err != nil {
