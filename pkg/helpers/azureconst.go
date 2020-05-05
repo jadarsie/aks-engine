@@ -75,6 +75,7 @@ func GetAzureLocations() []string {
 // GetDCOSMasterAllowedSizes returns the master allowed sizes
 func GetDCOSMasterAllowedSizes() string {
 	return `      "allowedValues": [
+        "Standard_NC4as_V4",
         "Standard_A10",
         "Standard_A11",
         "Standard_A2",
@@ -343,6 +344,7 @@ func GetDCOSMasterAllowedSizes() string {
 // GetKubernetesAllowedVMSKUs returns the allowed sizes for Kubernetes agent
 func GetKubernetesAllowedVMSKUs() string {
 	return `      "allowedValues": [
+        "Standard_NC4as_V4",
         "Standard_A0",
         "Standard_A1",
         "Standard_A10",
@@ -628,6 +630,9 @@ func GetKubernetesAllowedVMSKUs() string {
 // GetSizeMap returns the size / storage map
 func GetSizeMap() string {
 	return `    "vmSizesMap": {
+    "Standard_NC4as_V4": {
+      "storageAccountType": "Standard_LRS"
+    },
     "Standard_A0": {
       "storageAccountType": "Standard_LRS"
     },
