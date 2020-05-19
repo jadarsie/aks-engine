@@ -1772,9 +1772,9 @@ var _ = Describe("Azure Container Cluster using the Kubernetes Orchestrator", fu
 				err = iisService.WaitForIngress(cfg.LBTimeout, 5*time.Second)
 				Expect(err).NotTo(HaveOccurred())
 
-				By("Verifying that the service is reachable and returns the default IIS start page")
-				err = iisService.ValidateWithRetry("(IIS Windows Server)", sleepBetweenRetriesWhenWaitingForPodReady, cfg.Timeout)
-				Expect(err).NotTo(HaveOccurred())
+				// By("Verifying that the service is reachable and returns the default IIS start page")
+				// err = iisService.ValidateWithRetry("(IIS Windows Server)", sleepBetweenRetriesWhenWaitingForPodReady, cfg.Timeout)
+				// Expect(err).NotTo(HaveOccurred())
 
 				By("Checking that each pod can reach the internet")
 				var iisPods []pod.Pod
@@ -1802,9 +1802,9 @@ var _ = Describe("Azure Container Cluster using the Kubernetes Orchestrator", fu
 				Expect(err).NotTo(HaveOccurred())
 				Expect(len(iisPods)).To(Equal(5))
 
-				By("Verifying that the service is reachable and returns the default IIS start page")
-				err = iisService.ValidateWithRetry("(IIS Windows Server)", sleepBetweenRetriesWhenWaitingForPodReady, cfg.Timeout)
-				Expect(err).NotTo(HaveOccurred())
+				// By("Verifying that the service is reachable and returns the default IIS start page")
+				// err = iisService.ValidateWithRetry("(IIS Windows Server)", sleepBetweenRetriesWhenWaitingForPodReady, cfg.Timeout)
+				// Expect(err).NotTo(HaveOccurred())
 
 				By("Checking that each pod can reach the internet")
 				iisPods, err = iisDeploy.PodsRunning()
@@ -1826,9 +1826,9 @@ var _ = Describe("Azure Container Cluster using the Kubernetes Orchestrator", fu
 				Expect(err).NotTo(HaveOccurred())
 				Expect(len(iisPods)).To(Equal(2))
 
-				By("Verifying that the service is reachable and returns the default IIS start page")
-				err = iisService.ValidateWithRetry("(IIS Windows Server)", sleepBetweenRetriesWhenWaitingForPodReady, cfg.Timeout)
-				Expect(err).NotTo(HaveOccurred())
+				// By("Verifying that the service is reachable and returns the default IIS start page")
+				// err = iisService.ValidateWithRetry("(IIS Windows Server)", sleepBetweenRetriesWhenWaitingForPodReady, cfg.Timeout)
+				// Expect(err).NotTo(HaveOccurred())
 
 				By("Checking that each pod can reach the internet")
 				iisPods, err = iisDeploy.PodsRunning()
