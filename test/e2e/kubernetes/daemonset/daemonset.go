@@ -18,6 +18,7 @@ import (
 // Daemonset is used to parse data from kubectl get daemonsets
 type Daemonset struct {
 	Metadata Metadata `json:"metadata"`
+	Spec     Spec     `json:"spec"`
 	Status   Status   `json:"status"`
 }
 
@@ -27,6 +28,25 @@ type Metadata struct {
 	Labels    map[string]string `json:"labels"`
 	Name      string            `json:"name"`
 	Namespace string            `json:"namespace"`
+}
+
+type Spec struct {
+	Template Template `json:"template"`
+}
+
+// Template is used for fetching the deployment spec -> containers
+type Template struct {
+	TemplateSpec TemplateSpec `json:"spec"`
+}
+
+// TemplateSpec holds the list of containers for a deployment, the dns policy, and restart policy
+type TemplateSpec struct {
+	Containers []Container `json:"containers"`
+}
+
+// Container holds information like image and ports
+type Container struct {
+	Image string `json:"image"`
 }
 
 // Status holds information like hostIP and phase
