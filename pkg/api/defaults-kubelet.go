@@ -69,6 +69,8 @@ func (cs *ContainerService) setKubeletConfig(isUpgrade bool) {
 	staticWindowsKubeletConfig["--azure-container-registry-config"] = "c:\\k\\azure.json"
 	staticWindowsKubeletConfig["--pod-infra-container-image"] = "kubletwin/pause"
 	staticWindowsKubeletConfig["--kubeconfig"] = "c:\\k\\config"
+	staticWindowsKubeletConfig["--bootstrap-kubeconfig"] = "c:\\k\\bootstrap-kubeconfig"
+	staticWindowsKubeletConfig["--cert-dir"] = "c:\\k"
 	staticWindowsKubeletConfig["--cloud-config"] = "c:\\k\\azure.json"
 	staticWindowsKubeletConfig["--cgroups-per-qos"] = "false"
 	staticWindowsKubeletConfig["--enforce-node-allocatable"] = "\"\"\"\""
@@ -238,6 +240,9 @@ func (cs *ContainerService) setKubeletConfig(isUpgrade bool) {
 		if profile.KubernetesConfig.KubeletConfig == nil {
 			profile.KubernetesConfig.KubeletConfig = make(map[string]string)
 		}
+
+		profile.KubernetesConfig.KubeletConfig["--bootstrap-kubeconfig"] = "/var/lib/kubelet/bootstrap-kubeconfig"
+		profile.KubernetesConfig.KubeletConfig["--cert-dir"] = "/etc/kubernetes/certs"
 
 		if isUpgrade {
 			// if upgrade, force default "--pod-infra-container-image" value

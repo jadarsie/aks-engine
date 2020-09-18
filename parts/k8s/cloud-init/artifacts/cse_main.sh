@@ -242,6 +242,9 @@ if [[ -n ${MASTER_NODE} ]]; then
     fi
   fi
   time_metric "EnsureK8sControlPlane" ensureK8sControlPlane
+  if [[ -n ${MASTER_NODE} ]]; then
+    time_metric "EnsureKubeletTlsBootstrap" ensureKubeletTlsBootstrap
+  fi
   if [ -f /var/run/reboot-required ]; then
     time_metric "ReplaceAddonsInit" replaceAddonsInit
   else

@@ -374,7 +374,11 @@ ensureKubelet() {
   sysctl_reload 10 5 120 || exit {{GetCSEErrorCode "ERR_SYSCTL_RELOAD"}}
   KUBELET_DEFAULT_FILE=/etc/default/kubelet
   wait_for_file 1200 1 $KUBELET_DEFAULT_FILE || exit {{GetCSEErrorCode "ERR_FILE_WATCH_TIMEOUT"}}
-  KUBECONFIG_FILE=/var/lib/kubelet/kubeconfig
+  if [[ -n ${MASTER_NODE} ]]; then
+    KUBECONFIG_FILE=/var/lib/kubelet/kubeconfig
+  else
+    KUBECONFIG_FILE=/var/lib/kubelet/bootstrap-kubeconfig
+  fi
   wait_for_file 1200 1 $KUBECONFIG_FILE || exit {{GetCSEErrorCode "ERR_FILE_WATCH_TIMEOUT"}}
   KUBELET_RUNTIME_CONFIG_SCRIPT_FILE=/opt/azure/containers/kubelet.sh
   wait_for_file 1200 1 $KUBELET_RUNTIME_CONFIG_SCRIPT_FILE || exit {{GetCSEErrorCode "ERR_FILE_WATCH_TIMEOUT"}}
@@ -386,7 +390,14 @@ ensureKubelet() {
   {{- end}}
   systemctlEnableAndStart kubelet || exit {{GetCSEErrorCode "ERR_KUBELET_START_FAIL"}}
 }
-
+ensureKubeletTlsBootstrap() {
+  BOOTSTRAP_TOKEN_FILE=/etc/kubernetes/bootstrap-token.yaml
+  wait_for_file 1200 1 $BOOTSTRAP_TOKEN_FILE || exit {{GetCSEErrorCode "ERR_FILE_WATCH_TIMEOUT"}}
+  retrycmd 120 5 30 $KUBECTL apply -f $BOOTSTRAP_TOKEN_FILE || exit_cse {{GetCSEErrorCode "ERR_ADDONS_START_FAIL"}}
+  $KUBECTL create clusterrolebinding create-csrs-for-bootstrapping --clusterrole=system:node-bootstrapper --group=system:bootstrappers
+  $KUBECTL create clusterrolebinding auto-approve-csrs-for-group --clusterrole=system:certificates.k8s.io:certificatesigningrequests:nodeclient --group=system:bootstrappers
+  $KUBECTL create clusterrolebinding auto-approve-renewals-for-nodes --clusterrole=system:certificates.k8s.io:certificatesigningrequests:selfnodeclient --group=system:nodes
+}
 ensureAddons() {
 {{- if IsDashboardAddonEnabled}}
   retrycmd 120 5 30 $KUBECTL get namespace kubernetes-dashboard || exit_cse {{GetCSEErrorCode "ERR_ADDONS_START_FAIL"}} $GET_KUBELET_LOGS

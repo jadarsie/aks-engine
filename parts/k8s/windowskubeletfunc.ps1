@@ -108,31 +108,31 @@ Write-KubeConfig {
         [Parameter(Mandatory = $true)][string]
         $KubeDir
     )
-    $kubeConfigFile = [io.path]::Combine($KubeDir, "config")
+    $bootstrapKubeConfigFile = [io.path]::Combine($KubeDir, "bootstrap-kubeconfig")
 
-    $kubeConfig = @"
+    $bootstrapKubeConfig = @"
 ---
 apiVersion: v1
 clusters:
 - cluster:
     certificate-authority-data: "$CACertificate"
     server: https://${MasterIP}:443
-  name: "$MasterFQDNPrefix"
+  name: bootstrap
 contexts:
 - context:
-    cluster: "$MasterFQDNPrefix"
-    user: "$MasterFQDNPrefix-admin"
-  name: "$MasterFQDNPrefix"
-current-context: "$MasterFQDNPrefix"
+    cluster: bootstrap
+    user: kubelet-bootstrap
+  name: bootstrap
+current-context: bootstrap
 kind: Config
 users:
-- name: "$MasterFQDNPrefix-admin"
+- name: kubelet-bootstrap
   user:
-    client-certificate-data: "$AgentCertificate"
-    client-key-data: "$AgentKey"
+    # parametize token
+    token: 07401b.f395accd246ae52d
 "@
 
-    $kubeConfig | Out-File -encoding ASCII -filepath "$kubeConfigFile"
+    $bootstrapKubeConfig | Out-File -encoding ASCII -filepath "$bootstrapKubeConfigFile"
 }
 
 function

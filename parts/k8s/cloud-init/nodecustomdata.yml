@@ -394,28 +394,28 @@ write_files:
     WantedBy=multi-user.target
 {{end}}
 
-- path: /var/lib/kubelet/kubeconfig
-  permissions: "0644"
+- path: /var/lib/kubelet/bootstrap-kubeconfig
+  permissions: "0600"
   owner: root
   content: |
     apiVersion: v1
     kind: Config
     clusters:
-    - name: localcluster
+    - name: bootstrap
       cluster:
         certificate-authority: /etc/kubernetes/certs/ca.crt
         server: https://{{WrapAsVariable "kubernetesAPIServerIP"}}:443
     users:
-    - name: client
+    - name: kubelet-bootstrap
       user:
-        client-certificate: /etc/kubernetes/certs/client.crt
-        client-key: /etc/kubernetes/certs/client.key
+        # parametize token
+        token: 07401b.f395accd246ae52d
     contexts:
     - context:
-        cluster: localcluster
-        user: client
-      name: localclustercontext
-    current-context: localclustercontext
+        cluster: bootstrap
+        user: kubelet-bootstrap
+      name: bootstrap
+    current-context: bootstrap
     #EOF
 
 - path: /etc/default/kubelet
