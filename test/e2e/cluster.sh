@@ -70,16 +70,13 @@ function rotateCertificates {
     ${DEV_IMAGE} \
     ./bin/aks-engine rotate-certs \
     --api-model _output/${RESOURCE_GROUP}/apimodel.json \
-    --apiserver ${API_SERVER} \
-    --azure-env ${AZURE_ENV} \
-    --client-id ${AZURE_CLIENT_ID} \
-    --client-secret ${AZURE_CLIENT_SECRET} \
+    --ssh-host ${API_SERVER} \
     --debug \
-    --identity-system ${IDENTITY_SYSTEM} \
     --location ${REGION} \
-    --resource-group ${RESOURCE_GROUP} \
-    --ssh _output/${RESOURCE_GROUP}-ssh \
-    --subscription-id ${AZURE_SUBSCRIPTION_ID} || exit 1
+    --linux-ssh-private-key _output/${RESOURCE_GROUP}-ssh  \
+    --generate-new-certificates || exit 1
+
+    rm -rf _output/${RESOURCE_GROUP}/_rotate_certs_ouput
 }
 
 echo "Running E2E tests against a cluster built with the following API model:"
@@ -292,6 +289,7 @@ if [ -n "$ADD_NODE_POOL_INPUT" ]; then
   fi
 
   if [ "${ROTATE_CERTS}" = "true" ]; then
+    // Add ROTATE_CERTS_AFTER_ADD_NODE_POOL?
     rotateCertificates
   fi
 
@@ -410,6 +408,7 @@ if [ "${SCALE_CLUSTER}" = "true" ]; then
   done
 
   if [ "${ROTATE_CERTS}" = "true" ]; then
+    // Add ROTATE_CERTS_AFTER_SCALE_DOWN?
     rotateCertificates
   fi
 
@@ -503,6 +502,7 @@ if [ "${UPGRADE_CLUSTER}" = "true" ]; then
       --client-secret ${AZURE_CLIENT_SECRET} || exit 1
 
     if [ "${ROTATE_CERTS}" = "true" ]; then
+      // Add ROTATE_CERTS_AFTER_UPGRADE?
       rotateCertificates
     fi
 
@@ -585,6 +585,7 @@ if [ "${SCALE_CLUSTER}" = "true" ]; then
   done
 
   if [ "${ROTATE_CERTS}" = "true" ]; then
+    // Add ROTATE_CERTS_AFTER_SCALE_UP?
     rotateCertificates
   fi
 
