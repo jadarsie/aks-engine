@@ -6,6 +6,7 @@ package ssh
 import (
 	"fmt"
 	"io/ioutil"
+	"net"
 	"time"
 
 	"github.com/pkg/errors"
@@ -54,6 +55,8 @@ func clientWithRetry(host *RemoteHost) (*ssh.Client, error) {
 		switch err := err.(type) {
 		case *ssh.OpenChannelError:
 			return err.Reason == ssh.ConnectionFailed
+		case *net.OpError:
+			return err.Op == "dial"
 		default:
 			if cause := errors.Cause(err); err != cause {
 				return retryFunc(cause)
@@ -61,7 +64,7 @@ func clientWithRetry(host *RemoteHost) (*ssh.Client, error) {
 			return false
 		}
 	}
-	backoff := wait.Backoff{Steps: 10, Duration: 1 * time.Second}
+	backoff := wait.Backoff{Steps: 300, Duration: 10 * time.Second}
 	var c *ssh.Client
 	var err error
 	err = retry.OnError(backoff, retryFunc, func() error {

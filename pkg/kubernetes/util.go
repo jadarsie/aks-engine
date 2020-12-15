@@ -3,7 +3,11 @@
 
 package kubernetes
 
-import v1 "k8s.io/api/core/v1"
+import (
+	"time"
+
+	v1 "k8s.io/api/core/v1"
+)
 
 // IsNodeReady returns true if the NodeReady condition of node is set to true.
 //
@@ -37,6 +41,18 @@ func IsMirrorPod(pod v1.Pod) bool {
 	for k := range pod.ObjectMeta.Annotations {
 		if k == v1.MirrorPodAnnotationKey {
 			return true
+		}
+	}
+	return false
+}
+
+func IsStartedAfter(pod v1.Pod, restartTime time.Time) bool {
+	// Use if you assume a single container
+	for _, c := range pod.Status.ContainerStatuses {
+		if pod.Status.Phase == v1.PodRunning && c.State.Running != nil && c.Ready {
+			if c.State.Running.StartedAt.After(restartTime) {
+				return true
+			}
 		}
 	}
 	return false

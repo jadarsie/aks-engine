@@ -4,6 +4,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -15,6 +16,7 @@ import (
 	ops "github.com/Azure/aks-engine/cmd/rotatecerts"
 	"github.com/Azure/aks-engine/pkg/api"
 	"github.com/Azure/aks-engine/pkg/api/common"
+	"github.com/Azure/aks-engine/pkg/armhelpers"
 	"github.com/Azure/aks-engine/pkg/engine"
 	"github.com/Azure/aks-engine/pkg/helpers"
 	"github.com/Azure/aks-engine/pkg/helpers/ssh"
@@ -56,7 +58,10 @@ type nodeMap = map[string]*ssh.RemoteHost
 type fileMap = map[string]*ssh.RemoteFile
 
 type rotateCertsCmd struct {
+	authProvider
+
 	// user input
+	resourceGroupName      string
 	location               string
 	apiModelPath           string
 	newCertsPath           string
@@ -71,6 +76,7 @@ type rotateCertsCmd struct {
 	loader            *api.Apiloader
 	newCertsProfile   *api.CertificateProfile
 	kubeClient        *kubernetes.CompositeClientSet
+	armClient         armhelpers.AKSEngineClient
 	saTokenNamespaces []string
 	nodes             nodeMap
 	generateCerts     bool
@@ -81,6 +87,7 @@ type rotateCertsCmd struct {
 
 func newRotateCertsCmd() *cobra.Command {
 	rcc := rotateCertsCmd{
+		authProvider:  &authArgs{},
 		generateCerts: true,
 	}
 	command := &cobra.Command{
@@ -101,17 +108,24 @@ func newRotateCertsCmd() *cobra.Command {
 			return rcc.run()
 		},
 	}
-	command.Flags().StringVarP(&rcc.location, "location", "l", "", "Azure location where the cluster is deployed")
-	command.Flags().StringVarP(&rcc.apiModelPath, "api-model", "m", "", "path to the generated apimodel.json file")
-	command.Flags().StringVar(&rcc.sshHostURI, "ssh-host", "", "FQDN, or IP address, of an SSH listener that can reach all nodes in the cluster")
-	command.Flags().StringVar(&rcc.linuxSSHPrivateKeyPath, "linux-ssh-private-key", "", "path to a valid private SSH key to access the cluster's Linux nodes")
+	f := command.Flags()
+
+	f.StringVarP(&rcc.location, "location", "l", "", "Azure location where the cluster is deployed")
+	f.StringVarP(&rcc.resourceGroupName, "resource-group", "g", "", "the resource group where the cluster is deployed")
+	f.StringVarP(&rcc.apiModelPath, "api-model", "m", "", "path to the generated apimodel.json file")
+	f.StringVar(&rcc.sshHostURI, "ssh-host", "", "FQDN, or IP address, of an SSH listener that can reach all nodes in the cluster")
+	f.StringVar(&rcc.linuxSSHPrivateKeyPath, "linux-ssh-private-key", "", "path to a valid private SSH key to access the cluster's Linux nodes")
 	_ = command.MarkFlagRequired("location")
+	_ = command.MarkFlagRequired("resource-group")
 	_ = command.MarkFlagRequired("api-model")
 	_ = command.MarkFlagRequired("ssh-host")
 	_ = command.MarkFlagRequired("linux-ssh-private-key")
 
-	command.Flags().StringVarP(&rcc.newCertsPath, "certificate-profile", "", "", "path to a JSON file containing the new set of certificates")
-	command.Flags().BoolVarP(&rcc.resumeAfterError, "resume", "", false, "resume a previous execution that did not complete successfully")
+	f.StringVarP(&rcc.newCertsPath, "certificate-profile", "", "", "path to a JSON file containing the new set of certificates")
+	f.BoolVarP(&rcc.resumeAfterError, "resume", "", false, "resume a previous execution that did not complete successfully")
+
+	addAuthFlags(rcc.getAuthArgs(), f)
+
 	return command
 }
 
@@ -124,6 +138,12 @@ func (rcc *rotateCertsCmd) validateArgs() (err error) {
 		Translator: &i18n.Translator{
 			Locale: locale,
 		},
+	}
+	if err = rcc.getAuthArgs().validateAuthArgs(); err != nil {
+		return errors.Wrap(err, "failed to get validate auth args")
+	}
+	if rcc.armClient, err = rcc.authProvider.getClient(); err != nil {
+		return errors.Wrap(err, "failed to get ARM client")
 	}
 	rcc.location = helpers.NormalizeAzureRegion(rcc.location)
 	if rcc.location == "" {
@@ -578,27 +598,19 @@ func (rcc *rotateCertsCmd) rotateSATokens(nodes nodeMap) error {
 func (rcc *rotateCertsCmd) rotateMasterKubelet(nodes nodeMap) error {
 	log.Info("Rotating control plane apiserver-kubelet PKI")
 	step := "apiserver_kubelet"
-	waitForReadiness, restartAfter := make(nodeMap), time.Now()
 	for _, node := range nodes {
 		skipped, err := execStepsSequence(isMaster, node, execRemoteFunc(remoteBashScript(step)))
 		if !skipped && err != nil {
 			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
 		}
-		if shouldWaitForReadiness(skipped, err) {
-			waitForReadiness[node.URI] = node
-		}
 	}
-	// No need to wait if all nodes were skipped
-	if len(waitForReadiness) > 0 {
-		if err := rcc.waitForControlPlaneRestart(nodes, restartAfter, kubeAPIServer, kubeControllerManager); err != nil {
-			return err
-		}
-	}
-	log.Info("Restarting kube-proxy on control plane nodes")
+	log.Info("Rebooting control plane nodes")
 	for _, node := range nodes {
-		skipped, err := execStepsSequence(isMaster, node, deletePodFunc(rcc.kubeClient, kubeProxyLabels), deleteMirrorPodFunc(rcc.kubeClient, kubeSchedulerLabels))
-		if !skipped && err != nil {
-			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		err := rcc.armClient.RestartVirtualMachine(ctx, rcc.resourceGroupName, node.URI)
+		if err != nil {
+			return errors.Wrapf(err, "rebooting remote host %s", node.URI)
 		}
 	}
 	return nil

@@ -17840,6 +17840,7 @@ restart_mirror_pod_docker() {
 }
 
 restart_mirror_pod_containerd() {
+  systemctl_restart 10 5 10 kubelet
   restart_pod_containerd $1
 }
 
@@ -17849,8 +17850,9 @@ restart_pod_docker() {
 }
 
 restart_pod_containerd() {
-  restart_pod_containerd $1
-  systemctl_restart 10 5 10 kubelet
+  sudo ctr -n k8s.io t kill -s SIGKILL $1
+  sleep 5
+  sudo ctr -n k8s.io c delete $1
 }
 
 "$@"

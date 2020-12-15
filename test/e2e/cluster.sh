@@ -71,6 +71,14 @@ function rotateCertificates {
     jq '.properties.certificateProfile' _output/${RESOURCE_GROUP}/apimodel.json > ${CERTS_PATH}
   fi
 
+  # delete
+  docker run --rm \
+    -v $(pwd):${WORK_DIR} \
+    -w ${WORK_DIR} \
+    "${DEV_IMAGE}" kubectl get no,po -A -o wide \
+    --kubeconfig _output/${RESOURCE_GROUP}/kubeconfig/kubeconfig.${REGION}.json
+  # end delete
+
   if [ "${USE_CERTS_PATH}" = "true" ] ; then
     docker run --rm \
       -v $(pwd):${WORK_DIR} \
@@ -101,6 +109,38 @@ function rotateCertificates {
       --linux-ssh-private-key _output/${RESOURCE_GROUP}-ssh \
       --debug
   fi
+
+  # delete
+  ret=$?
+
+  CONFIG="_output/${RESOURCE_GROUP}/kubeconfig/kubeconfig.${REGION}.json"
+  docker run --rm \
+    -v $(pwd):${WORK_DIR} \
+    -w ${WORK_DIR} \
+    "${DEV_IMAGE}" kubectl get no,po -A -o wide \
+    --kubeconfig ${CONFIG}
+
+  if [ $ret -ne 0 ]; then
+    CONFIG="_output/${RESOURCE_GROUP}/_rotate_certs_output/kubeconfig/kubeconfig.${REGION}.json"
+    docker run --rm \
+      -v $(pwd):${WORK_DIR} \
+      -w ${WORK_DIR} \
+      "${DEV_IMAGE}" kubectl get no,po -A -o wide \
+      --kubeconfig ${CONFIG}
+  fi
+
+  if [ $ret -ne 0 ]; then
+    docker run --rm \
+      -v $(pwd):${WORK_DIR} \
+      -w ${WORK_DIR} \
+      "${DEV_IMAGE}" kubectl logs \
+      -l component=kube-apiserver,tier=control-plane \
+      -n kube-system \
+      --tail=-1 \
+      --kubeconfig ${CONFIG}
+    exit $ret1
+  fi
+  # end delete
 
   if [ "${USE_CERTS_PATH}" = "true" ] ; then
     # generate new certificates the next time around
@@ -154,8 +194,9 @@ else
   fi
 fi
 if [ "${ROTATE_CERTS}" = "true" ]; then
-  SKIP_AFTER_SCALE_DOWN="${SKIP_AFTER_SCALE_DOWN}|should be able to autoscale"
-  SKIP_AFTER_SCALE_UP="${SKIP_AFTER_SCALE_DOWN}|should be able to autoscale"
+  SKIP_AFTER_SCALE_DOWN="${SKIP_AFTER_SCALE_DOWN}|should be able to autoscale|should have node labels and annotations added by E2E test runner"
+  SKIP_AFTER_SCALE_UP="${SKIP_AFTER_SCALE_DOWN}|should be able to autoscale|should have node labels and annotations added by E2E test runner"
+  SKIP_AFTER_UPGRADE="${SKIP_AFTER_UPGRADE}|should have node labels and annotations added by E2E test runner"
 fi
 
 docker run --rm \
@@ -290,10 +331,63 @@ else
   exit 0
 fi
 
+if [ "${ROTATE_CERTS}" = "true" ]; then
+  rotateCertificates
+fi
+
+docker run --rm \
+  -v $(pwd):${WORK_DIR} \
+  -v /etc/ssl/certs:/etc/ssl/certs \
+  -w ${WORK_DIR} \
+  -e CLIENT_ID=${AZURE_CLIENT_ID} \
+  -e CLIENT_SECRET=${AZURE_CLIENT_SECRET} \
+  -e CLIENT_OBJECTID=${CLIENT_OBJECTID} \
+  -e TENANT_ID=${AZURE_TENANT_ID} \
+  -e SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID} \
+  -e INFRA_RESOURCE_GROUP="${INFRA_RESOURCE_GROUP}" \
+  -e ORCHESTRATOR=kubernetes \
+  -e NAME=$RESOURCE_GROUP \
+  -e TIMEOUT=${E2E_TEST_TIMEOUT} \
+  -e LB_TIMEOUT=${LB_TEST_TIMEOUT} \
+  -e KUBERNETES_IMAGE_BASE=$KUBERNETES_IMAGE_BASE \
+  -e KUBERNETES_IMAGE_BASE_TYPE=$KUBERNETES_IMAGE_BASE_TYPE \
+  -e CLEANUP_ON_EXIT=false \
+  -e REGIONS=$REGION \
+  -e IS_JENKINS=${IS_JENKINS} \
+  -e SKIP_LOGS_COLLECTION=true \
+  -e TEST_PVC="${TEST_PVC}" \
+  -e SKIP_TEST=false \
+  -e GINKGO_FAIL_FAST="${GINKGO_FAIL_FAST}" \
+  -e GINKGO_FOCUS="${GINKGO_FOCUS}" \
+  -e GINKGO_SKIP="${GINKGO_SKIP}" \
+  -e ADD_NODE_POOL_INPUT=${ADD_NODE_POOL_INPUT} \
+  -e API_PROFILE="${API_PROFILE}" \
+  -e CUSTOM_CLOUD_NAME="${ENVIRONMENT_NAME}" \
+  -e IDENTITY_SYSTEM="${IDENTITY_SYSTEM}" \
+  -e AUTHENTICATION_METHOD="${AUTHENTICATION_METHOD}" \
+  -e LOCATION="${LOCATION}" \
+  -e CUSTOM_CLOUD_CLIENT_ID="${CUSTOM_CLOUD_CLIENT_ID}" \
+  -e CUSTOM_CLOUD_SECRET="${CUSTOM_CLOUD_SECRET}" \
+  -e PORTAL_ENDPOINT="${PORTAL_ENDPOINT}" \
+  -e SERVICE_MANAGEMENT_ENDPOINT="${SERVICE_MANAGEMENT_ENDPOINT}" \
+  -e RESOURCE_MANAGER_ENDPOINT="${RESOURCE_MANAGER_ENDPOINT}" \
+  -e STORAGE_ENDPOINT_SUFFIX="${STORAGE_ENDPOINT_SUFFIX}" \
+  -e KEY_VAULT_DNS_SUFFIX="${KEY_VAULT_DNS_SUFFIX}" \
+  -e ACTIVE_DIRECTORY_ENDPOINT="${ACTIVE_DIRECTORY_ENDPOINT}" \
+  -e GALLERY_ENDPOINT="${GALLERY_ENDPOINT}" \
+  -e GRAPH_ENDPOINT="${GRAPH_ENDPOINT}" \
+  -e SERVICE_MANAGEMENT_VM_DNS_SUFFIX="${SERVICE_MANAGEMENT_VM_DNS_SUFFIX}" \
+  -e RESOURCE_MANAGER_VM_DNS_SUFFIX="${RESOURCE_MANAGER_VM_DNS_SUFFIX}" \
+  -e STABILITY_ITERATIONS=${STABILITY_ITERATIONS} \
+  -e STABILITY_TIMEOUT_SECONDS=${STABILITY_TIMEOUT_SECONDS} \
+  -e ARC_CLIENT_ID=${ARC_CLIENT_ID:-$AZURE_CLIENT_ID} \
+  -e ARC_CLIENT_SECRET=${ARC_CLIENT_SECRET:-$AZURE_CLIENT_SECRET} \
+  -e ARC_SUBSCRIPTION_ID=${ARC_SUBSCRIPTION_ID:-$AZURE_SUBSCRIPTION_ID} \
+  -e ARC_LOCATION=${ARC_LOCATION:-$LOCATION} \
+  -e ARC_TENANT_ID=${ARC_TENANT_ID:-$AZURE_TENANT_ID} \
+  ${DEV_IMAGE} make test-kubernetes 
+
 if [ -n "$ADD_NODE_POOL_INPUT" ]; then
-  if [ "${ROTATE_CERTS}" = "true" ]; then
-    rotateCertificates
-  fi
   for pool in $(echo ${ADD_NODE_POOL_INPUT} | jq -c '.[]'); do
     echo $pool > ${TMP_DIR}/addpool-input.json
     docker run --rm \
@@ -318,6 +412,10 @@ if [ -n "$ADD_NODE_POOL_INPUT" ]; then
   CLEANUP_AFTER_ADD_NODE_POOL=${CLEANUP_ON_EXIT}
   if [ "${UPGRADE_CLUSTER}" = "true" ] || [ "${SCALE_CLUSTER}" = "true" ]; then
     CLEANUP_AFTER_ADD_NODE_POOL="false"
+  fi
+
+  if [ "${ROTATE_CERTS}" = "true" ]; then
+    rotateCertificates
   fi
 
   docker run --rm \
@@ -374,9 +472,6 @@ if [ -n "$ADD_NODE_POOL_INPUT" ]; then
 fi
 
 if [ "${SCALE_CLUSTER}" = "true" ]; then
-  if [ "${ROTATE_CERTS}" = "true" ]; then
-    rotateCertificates
-  fi
   nodepoolcount=$(jq '.properties.agentPoolProfiles| length' < _output/$RESOURCE_GROUP/apimodel.json)
   for ((i = 0; i < $nodepoolcount; ++i)); do
     nodepool=$(jq -r --arg i $i '. | .properties.agentPoolProfiles[$i | tonumber].name' < _output/$RESOURCE_GROUP/apimodel.json)
@@ -437,6 +532,10 @@ if [ "${SCALE_CLUSTER}" = "true" ]; then
       --client-secret ${AZURE_CLIENT_SECRET} || exit 1
   done
 
+  if [ "${ROTATE_CERTS}" = "true" ]; then
+    rotateCertificates
+  fi
+
   docker run --rm \
     -v $(pwd):${WORK_DIR} \
     -v /etc/ssl/certs:/etc/ssl/certs \
@@ -491,9 +590,6 @@ if [ "${SCALE_CLUSTER}" = "true" ]; then
 fi
 
 if [ "${UPGRADE_CLUSTER}" = "true" ]; then
-  if [ "${ROTATE_CERTS}" = "true" ]; then
-    rotateCertificates
-  fi
   # modify the master VM SKU to simulate vertical vm scaling via upgrade
   docker run --rm \
       -v $(pwd):${WORK_DIR} \
@@ -528,6 +624,19 @@ if [ "${UPGRADE_CLUSTER}" = "true" ]; then
       --identity-system ${IDENTITY_SYSTEM}\
       --client-id ${AZURE_CLIENT_ID} \
       --client-secret ${AZURE_CLIENT_SECRET} || exit 1
+
+    # OLD_NODES=$(docker run --rm -v $(pwd):${WORK_DIR} -w ${WORK_DIR} "${DEV_IMAGE}" kubectl get no --no-headers \
+    #   --kubeconfig _output/${RESOURCE_GROUP}/kubeconfig/kubeconfig.${REGION}.json | grep -v v${ver_target} | awk '{print $1}' | xargs)
+
+    # docker run --rm \
+    #   -v $(pwd):${WORK_DIR} \
+    #   -w ${WORK_DIR} \
+    #   "${DEV_IMAGE}" kubectl delete no ${OLD_NODES} \
+    #   --kubeconfig _output/${RESOURCE_GROUP}/kubeconfig/kubeconfig.${REGION}.json
+
+    if [ "${ROTATE_CERTS}" = "true" ]; then
+      rotateCertificates
+    fi
 
     docker run --rm \
       -v $(pwd):${WORK_DIR} \
@@ -584,9 +693,6 @@ if [ "${UPGRADE_CLUSTER}" = "true" ]; then
 fi
 
 if [ "${SCALE_CLUSTER}" = "true" ]; then
-  if [ "${ROTATE_CERTS}" = "true" ]; then
-    rotateCertificates
-  fi
   for nodepool in $(jq -r '.properties.agentPoolProfiles[].name' < _output/$RESOURCE_GROUP/apimodel.json); do
     docker run --rm \
     -v $(pwd):${WORK_DIR} \
@@ -609,6 +715,10 @@ if [ "${SCALE_CLUSTER}" = "true" ]; then
     --client-id ${AZURE_CLIENT_ID} \
     --client-secret ${AZURE_CLIENT_SECRET} || exit 1
   done
+
+  if [ "${ROTATE_CERTS}" = "true" ]; then
+    rotateCertificates
+  fi
 
   docker run --rm \
     -v $(pwd):${WORK_DIR} \

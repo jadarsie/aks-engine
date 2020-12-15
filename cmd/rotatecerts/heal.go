@@ -17,7 +17,7 @@ import (
 
 type restartPodCondition func(v1.Pod) bool
 
-func healPodsFunc(ctx context.Context, nodes map[string]*ssh.RemoteHost, heal func(v1.Pod, *ssh.RemoteHost), conditions ...restartPodCondition) func(*v1.PodList) {
+func healMirrorPodsFunc(ctx context.Context, nodes map[string]*ssh.RemoteHost, heal func(v1.Pod, *ssh.RemoteHost), orConditions ...restartPodCondition) func(*v1.PodList) {
 	podStream := make(chan v1.Pod)
 	go func() {
 		defer close(podStream)
@@ -34,9 +34,12 @@ func healPodsFunc(ctx context.Context, nodes map[string]*ssh.RemoteHost, heal fu
 	}()
 	return func(pl *v1.PodList) {
 		for _, pli := range pl.Items {
-			needsRestart := true
-			for _, cond := range conditions {
-				needsRestart = needsRestart && cond(pli)
+			if !kubernetes.IsMirrorPod(pli) {
+				continue
+			}
+			needsRestart := false
+			for _, cond := range orConditions {
+				needsRestart = needsRestart || cond(pli)
 			}
 			if needsRestart {
 				podStream <- pli
@@ -57,16 +60,6 @@ func restartContainers(pod v1.Pod, node *ssh.RemoteHost) {
 		if len(containerID) != 2 || (cri != api.Docker && cri != api.Containerd) {
 			log.Debugf("Restart aborted. Unexpected pod.Status.ContainerStatuses.ContainerID value: %s", cs.ContainerID)
 			return
-		}
-		if cri == api.Containerd {
-			for _, c := range pod.Spec.Containers {
-				if c.Name == cs.Name {
-					arg = c.Command[0]
-					if arg == "/hyperkube" {
-						arg = c.Command[1]
-					}
-				}
-			}
 		}
 		// this recovers mirror pods (apiserver mostly) in CrashLoopBackOff from error:
 		// "Error: failed to create listener: failed to listen on 0.0.0.0:443: listen tcp 0.0.0.0:443: bind: address already in use"
