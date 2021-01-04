@@ -131,8 +131,6 @@ ensureAzureStackCertificates() {
 }
 
 configureAzureStackInterfaces() {
-  set +x
-
   NETWORK_INTERFACES_FILE="/etc/kubernetes/network_interfaces.json"
   AZURE_CNI_CONFIG_FILE="/etc/kubernetes/interfaces.json"
   AZURESTACK_ENVIRONMENT_JSON_PATH="/etc/kubernetes/azurestackcloud.json"
@@ -150,8 +148,8 @@ configureAzureStackInterfaces() {
   echo "------------------------------------------------------------------------"
   echo "Parameters"
   echo "------------------------------------------------------------------------"
-  echo "SERVICE_PRINCIPAL_CLIENT_ID:     ..."
-  echo "SERVICE_PRINCIPAL_CLIENT_SECRET: ..."
+  echo "SERVICE_PRINCIPAL_CLIENT_ID:     $SERVICE_PRINCIPAL_CLIENT_ID"
+  echo "SERVICE_PRINCIPAL_CLIENT_SECRET: $SERVICE_PRINCIPAL_CLIENT_SECRET"
   echo "SERVICE_MANAGEMENT_ENDPOINT:     $SERVICE_MANAGEMENT_ENDPOINT"
   echo "ACTIVE_DIRECTORY_ENDPOINT:       $ACTIVE_DIRECTORY_ENDPOINT"
   echo "TENANT_ID:                       $TENANT_ID"
@@ -226,8 +224,6 @@ configureAzureStackInterfaces() {
   echo ${AZURE_CNI_CONFIG} >${AZURE_CNI_CONFIG_FILE}
 
   chmod 0444 ${AZURE_CNI_CONFIG_FILE}
-
-  set -x
 }
 {{end}}
 #EOF
