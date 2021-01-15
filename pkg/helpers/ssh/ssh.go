@@ -6,7 +6,6 @@ package ssh
 import (
 	"fmt"
 	"io/ioutil"
-	"net"
 	"time"
 
 	"github.com/pkg/errors"
@@ -47,23 +46,8 @@ func PublicKeyAuth(sshPrivateKeyPath string) (ssh.AuthMethod, error) {
 }
 
 func clientWithRetry(host *RemoteHost) (*ssh.Client, error) {
-	var retryFunc func(err error) bool
-	retryFunc = func(err error) bool {
-		if err == nil {
-			return false
-		}
-		switch err := err.(type) {
-		case *ssh.OpenChannelError:
-			return err.Reason == ssh.ConnectionFailed
-		case *net.OpError:
-			return err.Op == "dial"
-		default:
-			if cause := errors.Cause(err); err != cause {
-				return retryFunc(cause)
-			}
-			return false
-		}
-	}
+	// TODO Granular retry func
+	retryFunc := func(err error) bool { return true }
 	backoff := wait.Backoff{Steps: 300, Duration: 10 * time.Second}
 	var c *ssh.Client
 	var err error

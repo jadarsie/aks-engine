@@ -18,6 +18,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
+const DefaultSuccessesNeeded int = 5
+
 type nodesCondition func(*v1.NodeList) bool
 
 // waitForNodesCondition fetches the cluster nodes and checks that nodesCondition is met for every node in the cluster
@@ -44,7 +46,7 @@ func waitForNodesCondition(client internal.Client, condition nodesCondition, suc
 
 // WaitForNodesReady returns true if all the cluster nodes reached the Ready state
 func WaitForNodesReady(client internal.Client, requiredNodes []string, interval, timeout time.Duration) error {
-	_, err := waitForNodesCondition(client, allExpectedNodesReadyCondition(requiredNodes), 5, interval, timeout)
+	_, err := waitForNodesCondition(client, allExpectedNodesReadyCondition(requiredNodes), DefaultSuccessesNeeded, interval, timeout)
 	return err
 }
 
@@ -107,10 +109,10 @@ func waitForPodsCondition(client internal.Client, namespace string, condition po
 
 // WaitForAllInNamespaceReady returns true if all containers in a given namespace reached the Ready state
 func WaitForAllInNamespaceReady(client internal.Client, namespace string, interval, timeout time.Duration, nodes map[string]*ssh.RemoteHost) error {
-	if err := waitForDaemonSetCondition(client, namespace, allDaemontSetReplicasUpdatedCondition, 5, interval, timeout); err != nil {
+	if err := waitForDaemonSetCondition(client, namespace, allDaemontSetReplicasUpdatedCondition, DefaultSuccessesNeeded, interval, timeout); err != nil {
 		return err
 	}
-	if err := waitForDeploymentCondition(client, namespace, allDeploymentReplicasUpdatedCondition, 5, interval, timeout); err != nil {
+	if err := waitForDeploymentCondition(client, namespace, allDeploymentReplicasUpdatedCondition, DefaultSuccessesNeeded, interval, timeout); err != nil {
 		return err
 	}
 
@@ -118,7 +120,7 @@ func WaitForAllInNamespaceReady(client internal.Client, namespace string, interv
 	defer cancel()
 	healFunc := healMirrorPodsFunc(ctx, nodes, restartContainers, kubernetes.IsAnyContainerCrashing)
 
-	return waitForPodsCondition(client, namespace, allPodsReadyCondition, 5, interval, timeout, healFunc)
+	return waitForPodsCondition(client, namespace, allPodsReadyCondition, DefaultSuccessesNeeded, interval, timeout, healFunc)
 }
 
 func allPodsReadyCondition(pl *v1.PodList) error {
@@ -145,7 +147,7 @@ func WaitForReady(client internal.Client, namespace string, pods []string, inter
 	healFunc := healMirrorPodsFunc(ctx, nodes, restartContainers, kubernetes.IsAnyContainerCrashing)
 
 	waitFor := allExpectedPodsReadyCondition(pods)
-	return waitForPodsCondition(client, namespace, waitFor, 6, interval, timeout, healFunc)
+	return waitForPodsCondition(client, namespace, waitFor, DefaultSuccessesNeeded, interval, timeout, healFunc)
 }
 
 func allExpectedPodsReadyCondition(expectedPods []string) podsCondition {
@@ -337,4 +339,33 @@ func shouldForceRestartConditionFunc(pods []string, restartTime time.Time, timeo
 		}
 		return false
 	}
+}
+
+// WaitForVMsRunning ...
+func WaitForVMsRunning(client internal.ARMClient, resourceGroupName string, requiredVMs []string, interval, timeout time.Duration) error {
+	var err error
+	var successesCount int
+	err = wait.PollImmediate(interval, timeout, func() (bool, error) {
+		allRunning := true
+		for _, vm := range requiredVMs {
+			state, err := client.GetVirtualMachinePowerState(resourceGroupName, vm)
+			if err != nil {
+				return false, nil
+			}
+			running := isVirtualMachineRunning(state)
+			if err != nil {
+				return false, err
+			}
+			allRunning = allRunning && running
+		}
+		if !allRunning {
+			return false, nil
+		}
+		successesCount++
+		if successesCount < DefaultSuccessesNeeded {
+			return false, nil
+		}
+		return true, nil
+	})
+	return err
 }

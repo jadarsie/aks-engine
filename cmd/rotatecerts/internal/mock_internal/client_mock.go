@@ -199,3 +199,55 @@ func (mr *MockClientMockRecorder) DeleteSecret(secret interface{}) *gomock.Call 
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSecret", reflect.TypeOf((*MockClient)(nil).DeleteSecret), secret)
 }
+
+// MockARMClient is a mock of ARMClient interface
+type MockARMClient struct {
+	ctrl     *gomock.Controller
+	recorder *MockARMClientMockRecorder
+}
+
+// MockARMClientMockRecorder is the mock recorder for MockARMClient
+type MockARMClientMockRecorder struct {
+	mock *MockARMClient
+}
+
+// NewMockARMClient creates a new mock instance
+func NewMockARMClient(ctrl *gomock.Controller) *MockARMClient {
+	mock := &MockARMClient{ctrl: ctrl}
+	mock.recorder = &MockARMClientMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use
+func (m *MockARMClient) EXPECT() *MockARMClientMockRecorder {
+	return m.recorder
+}
+
+// RestartVirtualMachine mocks base method
+func (m *MockARMClient) RestartVirtualMachine(resourceGroup, vmName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RestartVirtualMachine", resourceGroup, vmName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RestartVirtualMachine indicates an expected call of RestartVirtualMachine
+func (mr *MockARMClientMockRecorder) RestartVirtualMachine(resourceGroup, vmName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RestartVirtualMachine", reflect.TypeOf((*MockARMClient)(nil).RestartVirtualMachine), resourceGroup, vmName)
+}
+
+// GetVirtualMachinePowerState mocks base method
+func (m *MockARMClient) GetVirtualMachinePowerState(resourceGroup, vmName string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVirtualMachinePowerState", resourceGroup, vmName)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetVirtualMachinePowerState indicates an expected call of GetVirtualMachinePowerState
+func (mr *MockARMClientMockRecorder) GetVirtualMachinePowerState(resourceGroup, vmName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVirtualMachinePowerState", reflect.TypeOf((*MockARMClient)(nil).GetVirtualMachinePowerState), resourceGroup, vmName)
+}

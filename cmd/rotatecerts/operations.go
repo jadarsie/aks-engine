@@ -203,3 +203,22 @@ func RestartContainer(client internal.Client, node *ssh.RemoteHost, labels strin
 	}
 	return nil
 }
+
+func RestartVirtualMachine(client internal.ARMClient, resourceGroupName, vmName string) error {
+	status, err := client.GetVirtualMachinePowerState(resourceGroupName, vmName)
+	if err != nil {
+		return errors.Wrap(err, "fetching virtual machine power state")
+	}
+	if !isVirtualMachineRunning(status) {
+		log.Warnf("Skipping reboot, node %s is not the running state %s", vmName)
+		return nil
+	}
+	if err := client.RestartVirtualMachine(resourceGroupName, vmName); err != nil {
+		return errors.Wrapf(err, "rebooting remote host %s", vmName)
+	}
+	return nil
+}
+
+func isVirtualMachineRunning(status string) bool {
+	return strings.EqualFold(status, "PowerState/running")
+}

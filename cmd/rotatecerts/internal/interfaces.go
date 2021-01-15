@@ -33,3 +33,11 @@ type Client interface {
 	// DeleteSecret deletes the passed in secret.
 	DeleteSecret(secret *v1.Secret) error
 }
+
+type ARMClient interface {
+	// RestartVirtualMachine restarts the specified virtual machine.
+	RestartVirtualMachine(resourceGroup, vmName string) error
+
+	// GetVirtualMachinePowerState ...
+	GetVirtualMachinePowerState(resourceGroup, vmName string) (string, error)
+}

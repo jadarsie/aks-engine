@@ -160,6 +160,9 @@ type AKSEngineClient interface {
 	// VM availability set IDs provided.
 	GetAvailabilitySetFaultDomainCount(ctx context.Context, resourceGroup string, vmasIDs []string) (int, error)
 
+	// GetVirtualMachinePowerState
+	GetVirtualMachinePowerState(ctx context.Context, resourceGroup, name string) (string, error)
+
 	//
 	// STORAGE
 

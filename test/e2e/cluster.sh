@@ -93,6 +93,10 @@ function rotateCertificates {
       --location ${REGION} \
       --linux-ssh-private-key _output/${RESOURCE_GROUP}-ssh \
       --certificate-profile ${CERTS_PATH} \
+      --resource-group ${RESOURCE_GROUP} \
+      --client-id ${AZURE_CLIENT_ID} \
+      --client-secret ${AZURE_CLIENT_SECRET} \
+      --subscription-id ${AZURE_SUBSCRIPTION_ID} \
       --debug
   else
     docker run --rm \
@@ -107,6 +111,10 @@ function rotateCertificates {
       --ssh-host ${API_SERVER} \
       --location ${REGION} \
       --linux-ssh-private-key _output/${RESOURCE_GROUP}-ssh \
+      --resource-group ${RESOURCE_GROUP} \
+      --client-id ${AZURE_CLIENT_ID} \
+      --client-secret ${AZURE_CLIENT_SECRET} \
+      --subscription-id ${AZURE_SUBSCRIPTION_ID} \
       --debug
   fi
 
