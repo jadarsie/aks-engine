@@ -49,7 +49,7 @@ const (
 	kubeSchedulerLabels = "component=kube-scheduler,tier=control-plane"
 
 	rotateCertsDefaultInterval = 10 * time.Second
-	rotateCertsDefaultTimeout  = 15 * time.Minute
+	rotateCertsDefaultTimeout  = 20 * time.Minute
 )
 
 type nodeMap = map[string]*ssh.RemoteHost
@@ -257,35 +257,41 @@ func (rcc *rotateCertsCmd) run() (err error) {
 		return err
 	}
 
-	if err = rcc.waitForNodesReady(rcc.cs.Properties.GetMasterVMNameList()...); err != nil {
+	if err = rcc.waitForControlPlaneNodesReady(); err != nil {
 		return err
-	}
-	rcc.nodes, err = rcc.getClusterNodes()
-	if err != nil {
-		return errors.Wrap(err, "listing cluster nodes")
 	}
 	if err = rcc.waitForControlPlaneReadiness(); err != nil {
 		return err
+	}
+
+	rcc.nodes, err = rcc.getClusterNodes(isMaster)
+	if err != nil {
+		return errors.Wrap(err, "listing cluster nodes")
 	}
 	if err = rcc.rotateMasterCerts(); err != nil {
 		return errors.Wrap(err, "rotating certificates")
 	}
 
-	rcc.nodes, err = rcc.getClusterNodes()
+	if err = rcc.waitForControlPlaneNodesReady(); err != nil {
+		return err
+	}
+	if err := rcc.waitForControlPlaneReadiness(); err != nil {
+		return err
+	}
+
+	rcc.nodes, err = rcc.getClusterNodes(isAgent)
 	if err != nil {
 		return errors.Wrap(err, "listing cluster nodes")
 	}
 	if err = rcc.rotateAgentCerts(); err != nil {
 		return errors.Wrap(err, "rotating certificates")
 	}
+	if err := rcc.waitForKubeSystemReadiness(); err != nil {
+		return err
+	}
+
 	if err := rcc.updateAPIModel(); err != nil {
 		return errors.Wrap(err, "updating apimodel")
-	}
-	if err := rcc.waitForNodesReady(rcc.cs.Properties.GetMasterVMNameList()...); err != nil {
-		return err
-	}
-	if err := rcc.waitForControlPlaneReadiness(); err != nil {
-		return err
 	}
 
 	log.Infoln("Certificate rotation completed")
@@ -341,7 +347,7 @@ func (rcc *rotateCertsCmd) generateTLSArtifacts() error {
 }
 
 // getClusterNodes returns all cluster nodes
-func (rcc *rotateCertsCmd) getClusterNodes() (nodeMap, error) {
+func (rcc *rotateCertsCmd) getClusterNodes(condition nodeCondition) (nodeMap, error) {
 	// make sure we always include control plane nodes
 	nodes := make(nodeMap)
 	for _, master := range rcc.cs.Properties.GetMasterVMNameList() {
@@ -375,11 +381,16 @@ func (rcc *rotateCertsCmd) getClusterNodes() (nodeMap, error) {
 		}
 		nodes[node.URI] = node
 	}
+	for k, v := range nodes {
+		if !condition(v) {
+			delete(nodes, k)
+		}
+	}
 	return nodes, nil
 }
 
 // distributeCerts copies the new set of certificates to the cluster nodes.
-func (rcc *rotateCertsCmd) distributeCerts(nodes nodeMap) error {
+func (rcc *rotateCertsCmd) distributeCerts() error {
 	log.Info("Distributing certificates")
 	upload := func(files fileMap, node *ssh.RemoteHost) error {
 		for _, file := range files {
@@ -406,7 +417,7 @@ func (rcc *rotateCertsCmd) distributeCerts(nodes nodeMap) error {
 	if e != nil {
 		return errors.Wrap(e, "collectiong files to distribute")
 	}
-	for _, node := range nodes {
+	for _, node := range rcc.nodes {
 		skip, err := execStepsSequence(allNodes, node, execRemoteFunc(areCertsDistributedScript(node)))
 		if err != nil {
 			if skip {
@@ -430,66 +441,49 @@ func (rcc *rotateCertsCmd) distributeCerts(nodes nodeMap) error {
 }
 
 func (rcc *rotateCertsCmd) rotateMasterCerts() (err error) {
-	nodes := make(nodeMap)
-	for k, v := range rcc.nodes {
-		if isMaster(v) {
-			nodes[k] = v
-		}
-	}
-	rcc.nodes = nodes
-	if err = rcc.cleanupRemote(nodes, false); err != nil {
+	if err = rcc.cleanupRemote(false); err != nil {
 		return errors.Wrap(err, "deleting temporary artifacts from cluster nodes")
 	}
-	if err = rcc.distributeCerts(nodes); err != nil {
+	if err = rcc.distributeCerts(); err != nil {
 		return errors.Wrap(err, "distributing certificates")
 	}
-	log.Info("Rotating control plane certificates")
-	if err := rcc.backupRemote(nodes); err != nil {
+
+	if err := rcc.backupRemote(); err != nil {
 		return err
 	}
-	if err := rcc.rotateSATokens(nodes); err != nil {
+	if err := rcc.rotateMasters(); err != nil {
 		return err
 	}
-	if err := rcc.rotateMasterKubelet(nodes); err != nil {
-		return err
-	}
-	if err := rcc.cleanupRemote(nodes, true); err != nil {
+	if err := rcc.cleanupRemote(true); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (rcc *rotateCertsCmd) rotateAgentCerts() (err error) {
-	nodes := make(nodeMap)
-	for k, v := range rcc.nodes {
-		if isAgent(v) {
-			nodes[k] = v
-		}
-	}
-	rcc.nodes = nodes
-	if err = rcc.cleanupRemote(nodes, false); err != nil {
+	if err = rcc.cleanupRemote(false); err != nil {
 		return errors.Wrap(err, "deleting temporary artifacts from cluster nodes")
 	}
-	if err = rcc.distributeCerts(nodes); err != nil {
+	if err = rcc.distributeCerts(); err != nil {
 		return errors.Wrap(err, "distributing certificates")
 	}
-	log.Info("Rotating agent certificates")
-	if err := rcc.backupRemote(nodes); err != nil {
+
+	if err := rcc.backupRemote(); err != nil {
 		return err
 	}
-	if err := rcc.rotateAgentKubelet(nodes); err != nil {
+	if err := rcc.rotateAgents(); err != nil {
 		return err
 	}
-	if err := rcc.cleanupRemote(nodes, true); err != nil {
+	if err := rcc.cleanupRemote(true); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (rcc *rotateCertsCmd) backupRemote(nodes nodeMap) (err error) {
+func (rcc *rotateCertsCmd) backupRemote() (err error) {
 	log.Info("Backing up node certificates")
 	step := "backup"
-	for _, node := range nodes {
+	for _, node := range rcc.nodes {
 		skipped, err := execStepsSequence(isLinux, node, execRemoteFunc(remoteBashScript(step)))
 		if !skipped && err != nil {
 			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
@@ -502,77 +496,40 @@ func (rcc *rotateCertsCmd) backupRemote(nodes nodeMap) (err error) {
 	return nil
 }
 
-func (rcc *rotateCertsCmd) rotateSATokens(nodes nodeMap) error {
-	log.Infoln("Rotating service account tokens")
-	log.Debugln("Rotating service account signer")
-	waitForReadiness, restartAfter := make(nodeMap), time.Now()
-	for _, node := range nodes {
-		step := "sa_token_signer"
-		log.Infof("Node: %s. Step: %s", node.URI, step)
-		skipped, err := execStepsSequence(isMaster, node, execRemoteFunc(remoteBashScript("sa_token_signer")))
-		if !skipped && err != nil {
-			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
-		}
-		if shouldWaitForReadiness(skipped, err) {
-			waitForReadiness[node.URI] = node
-		}
-	}
-	// No need to wait if all nodes were skipped
-	if len(waitForReadiness) > 0 {
-		if err := rcc.waitForControlPlaneRestart(nodes, restartAfter, kubeAPIServer, kubeControllerManager); err != nil {
-			return err
-		}
-		if err := rcc.waitForControlPlaneReadiness(); err != nil {
-			return err
-		}
-	}
-	log.Debugln("Recreating service account tokens")
-	if err := ops.RotateServiceAccountTokens(rcc.kubeClient, rcc.saTokenNamespaces); err != nil {
-		return err
-	}
-	if err := rcc.waitForKubeSystemReadiness(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (rcc *rotateCertsCmd) rotateMasterKubelet(nodes nodeMap) error {
-	log.Info("Rotating control plane apiserver-kubelet PKI")
+func (rcc *rotateCertsCmd) rotateMasters() error {
+	log.Info("Rotating control plane certificates")
 	step := "cp_certs"
-	for _, node := range nodes {
-		log.Infof("Node: %s. Step: %s", node.URI, step)
+	for _, node := range rcc.nodes {
+		log.Debugf("Node: %s. Step: %s", node.URI, step)
 		skipped, err := execStepsSequence(isMaster, node, execRemoteFunc(remoteBashScript(step)))
 		if !skipped && err != nil {
 			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
 		}
 	}
-	log.Info("Rebooting control plane nodes")
-	for _, node := range nodes {
-		log.Infof("Node: %s. Step: reboot", node.URI)
-		if err := ops.RestartVirtualMachine(rcc.armClient, rcc.resourceGroupName, node.URI); err != nil {
-			return errors.Wrapf(err, "rebooting remote host %s", node.URI)
-		}
-	}
-	if err := rcc.waitForNodesReady(rcc.cs.Properties.GetMasterVMNameList()...); err != nil {
+	if err := rcc.rebootNodes(rcc.cs.Properties.GetMasterVMNameList()...); err != nil {
 		return err
 	}
-	log.Info("Rotating control plane frontproxy")
+	if err := rcc.waitForControlPlaneNodesReady(); err != nil {
+		return err
+	}
+	log.Info("Rotating proxy certificates")
 	step = "cp_proxy"
-	for _, node := range nodes {
-		log.Infof("Node: %s. Step: %s", node.URI, step)
+	for _, node := range rcc.nodes {
+		log.Debugf("Node: %s. Step: %s", node.URI, step)
 		skipped, err := execStepsSequence(isMaster, node, execRemoteFunc(remoteBashScript(step)))
 		if !skipped && err != nil {
 			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
 		}
 	}
+
 	return nil
 }
 
-func (rcc *rotateCertsCmd) rotateAgentKubelet(nodes nodeMap) error {
-	log.Info("Rotating agents apiserver-kubelet PKI and restarting kube-proxy")
+func (rcc *rotateCertsCmd) rotateAgents() error {
+	log.Info("Rotating agents certificates")
 	step := "kubelet_bootstrap"
-	for _, node := range nodes {
-		log.Infof("Node: %s. Step: %s", node.URI, step)
+	for _, node := range rcc.nodes {
+		log.Debugf("Node: %s. Step: %s", node.URI, step)
 		skipped, err := execStepsSequence(isLinuxAgent, node, execRemoteFunc(remoteBashScript(step)), deletePodFunc(rcc.kubeClient, kubeProxyLabels))
 		if !skipped && err != nil {
 			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
@@ -582,15 +539,20 @@ func (rcc *rotateCertsCmd) rotateAgentKubelet(nodes nodeMap) error {
 			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
 		}
 	}
+	log.Info("Recreating service account tokens")
+	if err := ops.RotateServiceAccountTokens(rcc.kubeClient, rcc.saTokenNamespaces); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (rcc *rotateCertsCmd) cleanupRemote(nodes nodeMap, force bool) (err error) {
+func (rcc *rotateCertsCmd) cleanupRemote(force bool) (err error) {
 	if !rcc.resumeAfterError || force {
 		log.Infoln("Deleting temporary artifacts from cluster nodes")
 		step := "cleanup"
-		for _, node := range nodes {
-			log.Infof("Node: %s. Step: %s", node.URI, step)
+		for _, node := range rcc.nodes {
+			log.Debugf("Node: %s. Step: %s", node.URI, step)
 			skipped, err := execStepsSequence(isLinux, node, execRemoteFunc(remoteBashScript(step)))
 			if !skipped && err != nil {
 				return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
@@ -657,15 +619,6 @@ func deletePodFunc(client *kubernetes.CompositeClientSet, labels string) func(no
 	}
 }
 
-func deleteMirrorPodFunc(client *kubernetes.CompositeClientSet, labels string) func(node *ssh.RemoteHost) error {
-	return func(node *ssh.RemoteHost) error {
-		if err := ops.RestartContainer(client, node, labels); err != nil {
-			return errors.Wrapf(err, "deleting container with labels %s from node %s", labels, node.URI)
-		}
-		return nil
-	}
-}
-
 // waitForControlPlaneReadiness checks that the control plane components are in a healthy state before we move to the next step.
 func (rcc *rotateCertsCmd) waitForControlPlaneReadiness() error {
 	log.Info("Checking health of control plane components")
@@ -677,6 +630,18 @@ func (rcc *rotateCertsCmd) waitForControlPlaneReadiness() error {
 	}
 	if err := ops.WaitForReady(rcc.kubeClient, metav1.NamespaceSystem, pods, rotateCertsDefaultInterval, rotateCertsDefaultTimeout, rcc.nodes); err != nil {
 		return errors.Wrap(err, "waiting for kube-system containers to reach the Ready state within the timeout period")
+	}
+	return nil
+}
+
+func (rcc *rotateCertsCmd) waitForControlPlaneNodesReady() error {
+	log.Info("Waiting for cluster nodes readiness")
+	nodes := rcc.cs.Properties.GetMasterVMNameList()
+	if err := ops.WaitForVMsRunning(rcc.armClient, rcc.resourceGroupName, nodes, rotateCertsDefaultInterval, rotateCertsDefaultTimeout); err != nil {
+		return errors.Wrap(err, "waiting for VMs to reach the running state")
+	}
+	if err := ops.WaitForNodesReady(rcc.kubeClient, nodes, rotateCertsDefaultInterval, rotateCertsDefaultTimeout); err != nil {
+		return errors.Wrap(err, "waiting for cluster nodes readiness")
 	}
 	return nil
 }
@@ -694,31 +659,13 @@ func (rcc *rotateCertsCmd) waitForKubeSystemReadiness() error {
 	return nil
 }
 
-// waitForControlPlaneRestart checks that each of the passed pods (1) restarted after restart time (2) and is healthy after the restart.
-//
-// Updating the yaml manifest of the control plane components triggers a pod restart (sometimes after a few seconds).
-// This method makes sure that the restart actually happened before further interaction with these pods.
-func (rcc *rotateCertsCmd) waitForControlPlaneRestart(nodes nodeMap, restartAfter time.Time, components ...string) error {
-	log.Infof("Waiting for control plane components restart: %s", components)
-	pods := make([]string, 0)
-	for k := range nodes {
-		for _, c := range components {
-			pods = append(pods, fmt.Sprintf("%s-%s", c, k))
+func (rcc *rotateCertsCmd) rebootNodes(nodes ...string) error {
+	log.Infof("Rebooting nodes: %s", nodes)
+	for _, node := range nodes {
+		log.Debugf("Node: %s. Step: reboot", node)
+		if err := ops.RestartVirtualMachine(rcc.armClient, rcc.resourceGroupName, node); err != nil {
+			return errors.Wrapf(err, "rebooting host %s", node)
 		}
-	}
-	if err := ops.WaitForRestart(rcc.kubeClient, metav1.NamespaceSystem, pods, restartAfter, rotateCertsDefaultInterval, rotateCertsDefaultTimeout, nodes); err != nil {
-		return errors.Wrap(err, "waiting for control plane components restart")
-	}
-	return nil
-}
-
-func (rcc *rotateCertsCmd) waitForNodesReady(requiredNodes ...string) error {
-	log.Info("Waiting for cluster nodes readiness")
-	if err := ops.WaitForVMsRunning(rcc.armClient, rcc.resourceGroupName, requiredNodes, rotateCertsDefaultInterval, rotateCertsDefaultTimeout); err != nil {
-		return errors.Wrap(err, "waiting for VMs to reach the running state")
-	}
-	if err := ops.WaitForNodesReady(rcc.kubeClient, requiredNodes, rotateCertsDefaultInterval, rotateCertsDefaultTimeout); err != nil {
-		return errors.Wrap(err, "waiting for cluster nodes readiness")
 	}
 	return nil
 }

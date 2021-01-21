@@ -4,14 +4,12 @@
 package rotatecerts
 
 import (
-	"context"
 	"time"
 
 	"github.com/Azure/aks-engine/cmd/rotatecerts/internal"
 	"github.com/Azure/aks-engine/pkg/helpers/ssh"
 	"github.com/Azure/aks-engine/pkg/kubernetes"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -79,7 +77,7 @@ func allExpectedNodesReadyCondition(requiredNodes []string) nodesCondition {
 type podsCondition func(*v1.PodList) error
 
 // waitForPodsCondition fetches the pods in a namespace and checks that podsCondition is met for every pod in the cluster
-func waitForPodsCondition(client internal.Client, namespace string, condition podsCondition, successesNeeded int, interval, timeout time.Duration, heal func(*v1.PodList)) error {
+func waitForPodsCondition(client internal.Client, namespace string, condition podsCondition, successesNeeded int, interval, timeout time.Duration) error {
 	var listErr, condErr error
 	var successesCount int
 	var pl *v1.PodList
@@ -89,7 +87,6 @@ func waitForPodsCondition(client internal.Client, namespace string, condition po
 			return false, listErr
 		}
 		if condErr = condition(pl); condErr != nil {
-			heal(pl)
 			return false, nil
 		}
 		successesCount++
@@ -115,12 +112,7 @@ func WaitForAllInNamespaceReady(client internal.Client, namespace string, interv
 	if err := waitForDeploymentCondition(client, namespace, allDeploymentReplicasUpdatedCondition, DefaultSuccessesNeeded, interval, timeout); err != nil {
 		return err
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	healFunc := healMirrorPodsFunc(ctx, nodes, restartContainers, kubernetes.IsAnyContainerCrashing)
-
-	return waitForPodsCondition(client, namespace, allPodsReadyCondition, DefaultSuccessesNeeded, interval, timeout, healFunc)
+	return waitForPodsCondition(client, namespace, allPodsReadyCondition, DefaultSuccessesNeeded, interval, timeout)
 }
 
 func allPodsReadyCondition(pl *v1.PodList) error {
@@ -142,12 +134,8 @@ func allPodsReadyCondition(pl *v1.PodList) error {
 
 // WaitForReady returns true if all containers in a given pod list reached the Ready state
 func WaitForReady(client internal.Client, namespace string, pods []string, interval, timeout time.Duration, nodes map[string]*ssh.RemoteHost) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	healFunc := healMirrorPodsFunc(ctx, nodes, restartContainers, kubernetes.IsAnyContainerCrashing)
-
 	waitFor := allExpectedPodsReadyCondition(pods)
-	return waitForPodsCondition(client, namespace, waitFor, DefaultSuccessesNeeded, interval, timeout, healFunc)
+	return waitForPodsCondition(client, namespace, waitFor, DefaultSuccessesNeeded, interval, timeout)
 }
 
 func allExpectedPodsReadyCondition(expectedPods []string) podsCondition {
@@ -175,54 +163,6 @@ func allExpectedPodsReadyCondition(expectedPods []string) podsCondition {
 		}
 		if len(podsNotReady) != 0 {
 			return errors.Errorf("at least one pod did not reach the Ready state: %s", podsNotReady)
-		}
-		return nil
-	}
-}
-
-// WaitForRestart returns true if all containers in a given pod list reached the Ready state and started after restartTime
-func WaitForRestart(client internal.Client, namespace string, pods []string, restartTime time.Time, interval, timeout time.Duration, nodes map[string]*ssh.RemoteHost) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	shouldForceRestartCondition := shouldForceRestartConditionFunc(pods, restartTime, timeout)
-	healFunc := healMirrorPodsFunc(ctx, nodes, restartContainers, kubernetes.IsAnyContainerCrashing, shouldForceRestartCondition)
-
-	waitFor := allExpectedPodsRestartedCondition(pods, restartTime)
-	return waitForPodsCondition(client, namespace, waitFor, 1, interval, timeout, healFunc)
-}
-
-func allExpectedPodsRestartedCondition(expectedPods []string, restartTime time.Time) podsCondition {
-	podStartTime := make(map[string]*metav1.Time)
-	for _, pod := range expectedPods {
-		podStartTime[pod] = nil
-	}
-	return func(pl *v1.PodList) error {
-		if len(podStartTime) == 0 {
-			return nil
-		}
-		for _, pli := range pl.Items {
-			_, ok := podStartTime[pli.ObjectMeta.Name]
-			if !ok {
-				continue
-			}
-			var earlier *metav1.Time
-			for _, c := range pli.Status.ContainerStatuses {
-				if pli.Status.Phase == v1.PodRunning && c.State.Running != nil && c.Ready {
-					if earlier == nil || c.State.Running.StartedAt.Before(earlier) {
-						earlier = &c.State.Running.StartedAt
-					}
-				}
-			}
-			podStartTime[pli.ObjectMeta.Name] = earlier
-		}
-		podsNotRestarted := make([]string, 0)
-		for pod, started := range podStartTime {
-			if started == nil || !started.After(restartTime) {
-				podsNotRestarted = append(podsNotRestarted, pod)
-			}
-		}
-		if len(podsNotRestarted) != 0 {
-			return errors.Errorf("at least one pod did not restart as expected: %s", podsNotRestarted)
 		}
 		return nil
 	}
@@ -318,27 +258,6 @@ func allDeploymentReplicasUpdatedCondition(dsl *appsv1.DeploymentList) error {
 		return errors.Errorf("at least one deployment is still updating replicas: %s", deployNotReady)
 	}
 	return nil
-}
-
-func shouldForceRestartConditionFunc(pods []string, restartTime time.Time, timeout time.Duration) func(pod v1.Pod) bool {
-	deadline := restartTime.Add(timeout / 2)
-	forced := make(map[string]bool)
-	return func(pod v1.Pod) bool {
-		if _, ok := forced[pod.Name]; ok {
-			return false
-		}
-		for _, p := range pods {
-			if p == pod.Name {
-				force := time.Now().After(deadline) && !kubernetes.IsStartedAfter(pod, restartTime)
-				if force {
-					log.Debugf("Forcing pod restart. Pod: %s. RestartTime: %s. Timeout: %s. Now: %s", pod.Name, restartTime, timeout, time.Now())
-					forced[pod.Name] = true
-				}
-				return force
-			}
-		}
-		return false
-	}
 }
 
 // WaitForVMsRunning ...
