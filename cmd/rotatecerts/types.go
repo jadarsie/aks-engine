@@ -28,7 +28,7 @@ func NewARMClient(client armhelpers.AKSEngineClient, interval, timeout time.Dura
 			Factor:   1.0,
 			Jitter:   0.0,
 		},
-		retryFunc: func(err error) bool { return true },
+		retryFunc: func(err error) bool { return err != nil },
 	}
 }
 
@@ -37,7 +37,7 @@ func (arm *ARMClient) GetVirtualMachinePowerState(resourceGroup, vmName string) 
 	var err error
 	status := ""
 	err = retry.OnError(arm.backoff, arm.retryFunc, func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		status, err = arm.client.GetVirtualMachinePowerState(ctx, resourceGroup, vmName)
 		if err != nil {
@@ -52,7 +52,7 @@ func (arm *ARMClient) GetVirtualMachinePowerState(resourceGroup, vmName string) 
 func (arm *ARMClient) RestartVirtualMachine(resourceGroup, vmName string) error {
 	var err error
 	err = retry.OnError(arm.backoff, arm.retryFunc, func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		if err = arm.client.RestartVirtualMachine(ctx, resourceGroup, vmName); err != nil {
 			return errors.Errorf("restarting virtual machine")

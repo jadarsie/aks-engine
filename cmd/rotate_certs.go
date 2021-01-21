@@ -23,7 +23,6 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	sshx "golang.org/x/crypto/ssh"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -67,6 +66,8 @@ type rotateCertsCmd struct {
 	linuxSSHPrivateKeyPath string
 	outputDirectory        string
 	resumeAfterError       bool
+	force                  bool
+
 	// computed
 	backupDirectory   string
 	apiVersion        string
@@ -121,6 +122,7 @@ func newRotateCertsCmd() *cobra.Command {
 
 	f.StringVarP(&rcc.newCertsPath, "certificate-profile", "", "", "path to a JSON file containing the new set of certificates")
 	f.BoolVarP(&rcc.resumeAfterError, "resume", "", false, "resume a previous execution that did not complete successfully")
+	f.BoolVarP(&rcc.force, "force", "", false, "")
 
 	addAuthFlags(rcc.getAuthArgs(), f)
 
@@ -247,47 +249,30 @@ func (rcc *rotateCertsCmd) run() (err error) {
 	if err != nil {
 		return errors.Wrap(err, "creating Kubernetes client")
 	}
-	resumeClusterAutoscaler, err := ops.PauseClusterAutoscaler(rcc.kubeClient)
-	defer func() {
-		if e := resumeClusterAutoscaler(); e != nil {
-			log.Warn(e)
+
+	if !rcc.force {
+		resumeClusterAutoscaler, err := ops.PauseClusterAutoscaler(rcc.kubeClient)
+		defer func() {
+			if e := resumeClusterAutoscaler(); e != nil {
+				log.Warn(e)
+			}
+		}()
+		if err != nil {
+			return err
 		}
-	}()
-	if err != nil {
-		return err
+		if err = rcc.waitForNodesReady(rcc.cs.Properties.GetMasterVMNameList()); err != nil {
+			return err
+		}
+		if err = rcc.waitForControlPlaneReadiness(); err != nil {
+			return err
+		}
 	}
 
-	if err = rcc.waitForControlPlaneNodesReady(); err != nil {
-		return err
-	}
-	if err = rcc.waitForControlPlaneReadiness(); err != nil {
-		return err
-	}
-
-	rcc.nodes, err = rcc.getClusterNodes(isMaster)
-	if err != nil {
-		return errors.Wrap(err, "listing cluster nodes")
-	}
 	if err = rcc.rotateMasterCerts(); err != nil {
 		return errors.Wrap(err, "rotating certificates")
 	}
-
-	if err = rcc.waitForControlPlaneNodesReady(); err != nil {
-		return err
-	}
-	if err := rcc.waitForControlPlaneReadiness(); err != nil {
-		return err
-	}
-
-	rcc.nodes, err = rcc.getClusterNodes(isAgent)
-	if err != nil {
-		return errors.Wrap(err, "listing cluster nodes")
-	}
 	if err = rcc.rotateAgentCerts(); err != nil {
 		return errors.Wrap(err, "rotating certificates")
-	}
-	if err := rcc.waitForKubeSystemReadiness(); err != nil {
-		return err
 	}
 
 	if err := rcc.updateAPIModel(); err != nil {
@@ -346,9 +331,8 @@ func (rcc *rotateCertsCmd) generateTLSArtifacts() error {
 	return nil
 }
 
-// getClusterNodes returns all cluster nodes
-func (rcc *rotateCertsCmd) getClusterNodes(condition nodeCondition) (nodeMap, error) {
-	// make sure we always include control plane nodes
+// getControlPlaneNodes ...
+func (rcc *rotateCertsCmd) getControlPlaneNodes() (nodeMap, error) {
 	nodes := make(nodeMap)
 	for _, master := range rcc.cs.Properties.GetMasterVMNameList() {
 		nodes[master] = &ssh.RemoteHost{
@@ -359,10 +343,16 @@ func (rcc *rotateCertsCmd) getClusterNodes(condition nodeCondition) (nodeMap, er
 			Jumpbox:         rcc.jumpbox,
 		}
 	}
+	return nodes, nil
+}
+
+// getAgentNodes ...
+func (rcc *rotateCertsCmd) getAgentNodes() (nodeMap, error) {
 	nodeList, err := rcc.kubeClient.ListNodes()
 	if err != nil {
 		return nil, err
 	}
+	nodes := make(nodeMap)
 	for _, nli := range nodeList.Items {
 		node := &ssh.RemoteHost{
 			URI:     nli.Name,
@@ -382,7 +372,7 @@ func (rcc *rotateCertsCmd) getClusterNodes(condition nodeCondition) (nodeMap, er
 		nodes[node.URI] = node
 	}
 	for k, v := range nodes {
-		if !condition(v) {
+		if isMaster(v) {
 			delete(nodes, k)
 		}
 	}
@@ -390,41 +380,22 @@ func (rcc *rotateCertsCmd) getClusterNodes(condition nodeCondition) (nodeMap, er
 }
 
 // distributeCerts copies the new set of certificates to the cluster nodes.
-func (rcc *rotateCertsCmd) distributeCerts() error {
+func (rcc *rotateCertsCmd) distributeCerts() (err error) {
 	log.Info("Distributing certificates")
 	upload := func(files fileMap, node *ssh.RemoteHost) error {
 		for _, file := range files {
-			co, err := ssh.CopyToRemote(node, file)
-			if err != nil {
+			if co, err := ssh.CopyToRemote(node, file); err != nil {
 				log.Debugf("Remote command output: %s", co)
 				return errors.Wrap(err, "uploading certificate")
 			}
 		}
 		return nil
 	}
-	areCertsDistributedScript := func(node *ssh.RemoteHost) string {
-		switch node.OperatingSystem {
-		case api.Linux:
-			return "bash -euxo pipefail -c \"[ -d /etc/kubernetes/certs.bak ] && exit 25 || exit 0\""
-		case api.Windows:
-			filePath := "$env:temp\\ca.crt"
-			return fmt.Sprintf("powershell -noprofile -command \"if (Test-Path %s) { exit 25 } else { exit 0 }\"", filePath)
-		default:
-			return ""
-		}
-	}
 	masterCerts, linuxCerts, windowsCerts, e := getFilesToDistribute(rcc.cs, "/etc/kubernetes/rotate-certs/certs")
 	if e != nil {
-		return errors.Wrap(e, "collectiong files to distribute")
+		return errors.Wrap(e, "collecting files to distribute")
 	}
 	for _, node := range rcc.nodes {
-		skip, err := execStepsSequence(allNodes, node, execRemoteFunc(areCertsDistributedScript(node)))
-		if err != nil {
-			if skip {
-				continue
-			}
-			return errors.Wrapf(err, "checking certs on remote host %s", node.URI)
-		}
 		log.Debugf("Uploading certificates to node %s", node.URI)
 		if isMaster(node) {
 			err = upload(masterCerts, node)
@@ -441,41 +412,57 @@ func (rcc *rotateCertsCmd) distributeCerts() error {
 }
 
 func (rcc *rotateCertsCmd) rotateMasterCerts() (err error) {
-	if err = rcc.cleanupRemote(false); err != nil {
-		return errors.Wrap(err, "deleting temporary artifacts from cluster nodes")
+	rcc.nodes, err = rcc.getControlPlaneNodes()
+	if err != nil {
+		return errors.Wrap(err, "listing cluster nodes")
 	}
 	if err = rcc.distributeCerts(); err != nil {
 		return errors.Wrap(err, "distributing certificates")
 	}
-
 	if err := rcc.backupRemote(); err != nil {
 		return err
 	}
 	if err := rcc.rotateMasters(); err != nil {
 		return err
 	}
-	if err := rcc.cleanupRemote(true); err != nil {
+	if err := rcc.cleanupRemote(); err != nil {
+		return err
+	}
+	if err = rcc.waitForNodesReady(keys(rcc.nodes)); err != nil {
+		return err
+	}
+	if err := rcc.waitForControlPlaneReadiness(); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (rcc *rotateCertsCmd) rotateAgentCerts() (err error) {
-	if err = rcc.cleanupRemote(false); err != nil {
-		return errors.Wrap(err, "deleting temporary artifacts from cluster nodes")
+	rcc.nodes, err = rcc.getAgentNodes()
+	if err != nil {
+		return errors.Wrap(err, "listing cluster nodes")
 	}
 	if err = rcc.distributeCerts(); err != nil {
 		return errors.Wrap(err, "distributing certificates")
 	}
-
 	if err := rcc.backupRemote(); err != nil {
 		return err
 	}
 	if err := rcc.rotateAgents(); err != nil {
 		return err
 	}
-	if err := rcc.cleanupRemote(true); err != nil {
+	if err := rcc.cleanupRemote(); err != nil {
 		return err
+	}
+	if err = rcc.waitForNodesReady(keys(rcc.nodes)); err != nil {
+		return err
+	}
+	log.Info("Recreating service account tokens")
+	if err := ops.RotateServiceAccountTokens(rcc.kubeClient, rcc.saTokenNamespaces); err != nil {
+		return err
+	}
+	if err := rcc.waitForKubeSystemReadiness(); err != nil {
+		log.Errorf("waitForKubeSystemReadiness returned an error: %s", err.Error())
 	}
 	return nil
 }
@@ -484,12 +471,10 @@ func (rcc *rotateCertsCmd) backupRemote() (err error) {
 	log.Info("Backing up node certificates")
 	step := "backup"
 	for _, node := range rcc.nodes {
-		skipped, err := execStepsSequence(isLinux, node, execRemoteFunc(remoteBashScript(step)))
-		if !skipped && err != nil {
+		if err := execStepsSequence(isLinux, node, execRemoteFunc(remoteBashScript(step))); err != nil {
 			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
 		}
-		skipped, err = execStepsSequence(isWindowsAgent, node, execRemoteFunc(remotePowershellScript("Backup")))
-		if !skipped && err != nil {
+		if err = execStepsSequence(isWindowsAgent, node, execRemoteFunc(remotePowershellScript("Backup"))); err != nil {
 			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
 		}
 	}
@@ -501,66 +486,55 @@ func (rcc *rotateCertsCmd) rotateMasters() error {
 	step := "cp_certs"
 	for _, node := range rcc.nodes {
 		log.Debugf("Node: %s. Step: %s", node.URI, step)
-		skipped, err := execStepsSequence(isMaster, node, execRemoteFunc(remoteBashScript(step)))
-		if !skipped && err != nil {
+		if err := execStepsSequence(isMaster, node, execRemoteFunc(remoteBashScript(step))); err != nil {
 			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
 		}
 	}
 	if err := rcc.rebootNodes(rcc.cs.Properties.GetMasterVMNameList()...); err != nil {
 		return err
 	}
-	if err := rcc.waitForControlPlaneNodesReady(); err != nil {
+	if err := rcc.waitForVMsRunning(keys(rcc.nodes)); err != nil {
+		return err
+	}
+	if err := rcc.waitForNodesReady(keys(rcc.nodes)); err != nil {
 		return err
 	}
 	log.Info("Rotating proxy certificates")
 	step = "cp_proxy"
 	for _, node := range rcc.nodes {
 		log.Debugf("Node: %s. Step: %s", node.URI, step)
-		skipped, err := execStepsSequence(isMaster, node, execRemoteFunc(remoteBashScript(step)))
-		if !skipped && err != nil {
+		if err := execStepsSequence(isMaster, node, execRemoteFunc(remoteBashScript(step))); err != nil {
 			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
 		}
 	}
-
 	return nil
 }
 
 func (rcc *rotateCertsCmd) rotateAgents() error {
 	log.Info("Rotating agents certificates")
-	step := "kubelet_bootstrap"
+	step := "agent_certs"
 	for _, node := range rcc.nodes {
 		log.Debugf("Node: %s. Step: %s", node.URI, step)
-		skipped, err := execStepsSequence(isLinuxAgent, node, execRemoteFunc(remoteBashScript(step)), deletePodFunc(rcc.kubeClient, kubeProxyLabels))
-		if !skipped && err != nil {
+		if err := execStepsSequence(isLinuxAgent, node, execRemoteFunc(remoteBashScript(step)), deletePodFunc(rcc.kubeClient, kubeProxyLabels)); err != nil {
 			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
 		}
-		skipped, err = execStepsSequence(isWindowsAgent, node, execRemoteFunc(remotePowershellScript("Start-CertRotation")))
-		if !skipped && err != nil {
-			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
+		if err := execStepsSequence(isWindowsAgent, node, execRemoteFunc(remotePowershellScript("Start-CertRotation"))); err != nil {
+			return errors.Wrapf(err, "executing Start-CertRotation function on remote host %s", node.URI)
 		}
 	}
-	log.Info("Recreating service account tokens")
-	if err := ops.RotateServiceAccountTokens(rcc.kubeClient, rcc.saTokenNamespaces); err != nil {
-		return err
-	}
-
 	return nil
 }
 
-func (rcc *rotateCertsCmd) cleanupRemote(force bool) (err error) {
-	if !rcc.resumeAfterError || force {
-		log.Infoln("Deleting temporary artifacts from cluster nodes")
-		step := "cleanup"
-		for _, node := range rcc.nodes {
-			log.Debugf("Node: %s. Step: %s", node.URI, step)
-			skipped, err := execStepsSequence(isLinux, node, execRemoteFunc(remoteBashScript(step)))
-			if !skipped && err != nil {
-				return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
-			}
-			skipped, err = execStepsSequence(isWindowsAgent, node, execRemoteFunc(remotePowershellScript("Clean")))
-			if !skipped && err != nil {
-				return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
-			}
+func (rcc *rotateCertsCmd) cleanupRemote() (err error) {
+	log.Infoln("Deleting temporary artifacts from cluster nodes")
+	step := "cleanup"
+	for _, node := range rcc.nodes {
+		log.Debugf("Node: %s. Step: %s", node.URI, step)
+		if err := execStepsSequence(isLinux, node, execRemoteFunc(remoteBashScript(step))); err != nil {
+			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
+		}
+		if err = execStepsSequence(isWindowsAgent, node, execRemoteFunc(remotePowershellScript("Clean"))); err != nil {
+			return errors.Wrapf(err, "executing %s function on remote host %s", step, node.URI)
 		}
 	}
 	return nil
@@ -577,29 +551,22 @@ func (rcc *rotateCertsCmd) updateAPIModel() error {
 	return nil
 }
 
-func execStepsSequence(cond nodeCondition, node *ssh.RemoteHost, steps ...func(node *ssh.RemoteHost) error) (skipped bool, err error) {
+func execStepsSequence(cond nodeCondition, node *ssh.RemoteHost, steps ...func(node *ssh.RemoteHost) error) error {
 	if !cond(node) {
-		// node condition not met, do not execute
-		return true, nil
+		return nil
 	}
 	for _, step := range steps {
 		if err := step(node); err != nil {
-			if skippedByNode(err) {
-				log.Debugf("Node %s skipped", node.URI)
-				return true, err
-			}
-			// remote command failure, should be handled
-			return false, err
+			return err
 		}
 	}
-	// all remote commands succeeded
-	return false, nil
+	return nil
 }
 
 func execRemoteFunc(script string) func(node *ssh.RemoteHost) error {
 	return func(node *ssh.RemoteHost) error {
 		out, err := ssh.ExecuteRemote(node, script)
-		if err != nil && !skippedByNode(err) {
+		if err != nil {
 			log.Debugf("Remote command output: %s", out)
 		}
 		return err
@@ -629,19 +596,22 @@ func (rcc *rotateCertsCmd) waitForControlPlaneReadiness() error {
 		}
 	}
 	if err := ops.WaitForReady(rcc.kubeClient, metav1.NamespaceSystem, pods, rotateCertsDefaultInterval, rotateCertsDefaultTimeout, rcc.nodes); err != nil {
-		return errors.Wrap(err, "waiting for kube-system containers to reach the Ready state within the timeout period")
+		return errors.Wrap(err, "waiting for control plane containers to reach the Ready state within the timeout period")
 	}
 	return nil
 }
 
-func (rcc *rotateCertsCmd) waitForControlPlaneNodesReady() error {
-	log.Info("Waiting for cluster nodes readiness")
-	nodes := rcc.cs.Properties.GetMasterVMNameList()
-	if err := ops.WaitForVMsRunning(rcc.armClient, rcc.resourceGroupName, nodes, rotateCertsDefaultInterval, rotateCertsDefaultTimeout); err != nil {
-		return errors.Wrap(err, "waiting for VMs to reach the running state")
-	}
+func (rcc *rotateCertsCmd) waitForNodesReady(nodes []string) error {
+	log.Infof("Waiting for cluster nodes readiness: %s", nodes)
 	if err := ops.WaitForNodesReady(rcc.kubeClient, nodes, rotateCertsDefaultInterval, rotateCertsDefaultTimeout); err != nil {
 		return errors.Wrap(err, "waiting for cluster nodes readiness")
+	}
+	return nil
+}
+
+func (rcc *rotateCertsCmd) waitForVMsRunning(nodes []string) error {
+	if err := ops.WaitForVMsRunning(rcc.armClient, rcc.resourceGroupName, nodes, rotateCertsDefaultInterval, rotateCertsDefaultTimeout); err != nil {
+		return errors.Wrap(err, "waiting for VMs to reach the running state")
 	}
 	return nil
 }
@@ -660,7 +630,7 @@ func (rcc *rotateCertsCmd) waitForKubeSystemReadiness() error {
 }
 
 func (rcc *rotateCertsCmd) rebootNodes(nodes ...string) error {
-	log.Infof("Rebooting nodes: %s", nodes)
+	log.Info("Rebooting control plna nodes")
 	for _, node := range nodes {
 		log.Debugf("Node: %s. Step: reboot", node)
 		if err := ops.RestartVirtualMachine(rcc.armClient, rcc.resourceGroupName, node); err != nil {
@@ -699,15 +669,15 @@ func (rcc *rotateCertsCmd) getKubeClient() (*kubernetes.CompositeClientSet, erro
 func getFilesToDistribute(cs *api.ContainerService, dir string) (fileMap, fileMap, fileMap, error) {
 	p := cs.Properties.CertificateProfile
 
-	kubeconfig, err := getKubeConfig(cs, dir)
+	kubeconfig, err := remoteKubeConfig(cs, dir)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "generating new kubeconfig")
 	}
-	linuxScript, err := getLinuxScript()
+	linuxScript, err := loadLinuxScript()
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "loading rotate-certs.sh")
 	}
-	windowsScript, err := getWindowsScript()
+	windowsScript, err := loadWindowsScript()
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "loading rotate-certs.ps1")
 	}
@@ -749,7 +719,7 @@ func getFilesToDistribute(cs *api.ContainerService, dir string) (fileMap, fileMa
 	return masterFiles, linuxFiles, windowsFiles, nil
 }
 
-func getKubeConfig(cs *api.ContainerService, dir string) (*ssh.RemoteFile, error) {
+func remoteKubeConfig(cs *api.ContainerService, dir string) (*ssh.RemoteFile, error) {
 	adminUsername := fmt.Sprintf("%s:%s", cs.Properties.LinuxProfile.AdminUsername, cs.Properties.LinuxProfile.AdminUsername)
 	kubeconfig, err := engine.GenerateKubeConfig(cs.Properties, cs.Location)
 	if err != nil {
@@ -758,7 +728,7 @@ func getKubeConfig(cs *api.ContainerService, dir string) (*ssh.RemoteFile, error
 	return ssh.NewRemoteFile(path.Join(dir, "kubeconfig"), configPermissions, adminUsername, []byte(kubeconfig)), nil
 }
 
-func getLinuxScript() (*ssh.RemoteFile, error) {
+func loadLinuxScript() (*ssh.RemoteFile, error) {
 	c, err := engine.Asset("k8s/rotate-certs.sh")
 	if err != nil {
 		return nil, err
@@ -766,7 +736,7 @@ func getLinuxScript() (*ssh.RemoteFile, error) {
 	return ssh.NewRemoteFile("/etc/kubernetes/rotate-certs/rotate-certs.sh", "744", rootUserGroup, c), nil
 }
 
-func getWindowsScript() (*ssh.RemoteFile, error) {
+func loadWindowsScript() (*ssh.RemoteFile, error) {
 	c, err := engine.Asset("k8s/rotate-certs.ps1")
 	if err != nil {
 		return nil, err
@@ -794,29 +764,6 @@ func isWindowsAgent(node *ssh.RemoteHost) bool { return node.OperatingSystem == 
 func isLinuxAgent(node *ssh.RemoteHost) bool   { return isLinux(node) && !isMaster(node) }
 func allNodes(node *ssh.RemoteHost) bool       { return true }
 
-// skippedByNode returns true if the remote script execution was skipped.
-func skippedByNode(err error) bool {
-	// remote scripts return SKIP_EXIT_CODE if the steps was completed by a previous rotate-certs execution
-	if err == nil {
-		return false
-	}
-	skipExitCode := 25
-	switch err := err.(type) {
-	case *sshx.ExitError:
-		return err.Waitmsg.ExitStatus() == skipExitCode
-	default:
-		cause := errors.Cause(err)
-		if err != cause {
-			return skippedByNode(cause)
-		}
-		return false
-	}
-}
-
-func shouldWaitForReadiness(skipped bool, err error) bool {
-	return !skipped && err == nil
-}
-
 func (rcc *rotateCertsCmd) getNamespacesWithSATokensToRotate() []string {
 	// TODO parametize addons namespace so hard-coding their names is not required.
 	// TODO maybe add an extra cli param so user can add extra namespaces
@@ -834,4 +781,12 @@ func (rcc *rotateCertsCmd) getNamespacesWithSATokensToRotate() []string {
 		namespaces = append(namespaces, "drainsafe-system")
 	}
 	return namespaces
+}
+
+func keys(nodes nodeMap) []string {
+	n := make([]string, 0, 0)
+	for k := range nodes {
+		n = append(n, k)
+	}
+	return n
 }

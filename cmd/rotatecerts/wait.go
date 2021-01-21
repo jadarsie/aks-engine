@@ -281,7 +281,7 @@ func WaitForVMsRunning(client internal.ARMClient, resourceGroupName string, requ
 			return false, nil
 		}
 		successesCount++
-		if successesCount < DefaultSuccessesNeeded {
+		if successesCount < 1 {
 			return false, nil
 		}
 		return true, nil

@@ -10,9 +10,7 @@ import (
 	"time"
 
 	"github.com/Azure/aks-engine/cmd/rotatecerts/internal"
-	"github.com/Azure/aks-engine/pkg/api"
 	"github.com/Azure/aks-engine/pkg/api/common"
-	"github.com/Azure/aks-engine/pkg/helpers/ssh"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
@@ -166,52 +164,13 @@ func deleteSATokensFunc(client internal.Client, ns string) (func(string) error, 
 	}, nil
 }
 
-func RestartContainer(client internal.Client, node *ssh.RemoteHost, labels string) error {
-	pl, err := client.ListPods(metav1.NamespaceSystem, metav1.ListOptions{
-		FieldSelector: fmt.Sprintf("spec.nodeName=%s", node.URI),
-		LabelSelector: labels,
-	})
-	if err != nil {
-		return errors.Wrap(err, "listing pods")
-	}
-	for _, pli := range pl.Items {
-		for _, cs := range pli.Status.ContainerStatuses {
-			containerID := strings.Split(cs.ContainerID, "://")
-			cri := containerID[0]
-			arg := containerID[1]
-			if len(containerID) != 2 || (cri != api.Docker && cri != api.Containerd) {
-				return errors.Errorf("Restart aborted. Unexpected pod.Status.ContainerStatuses.ContainerID value: %s", cs.ContainerID)
-			}
-			if cri == api.Containerd {
-				for _, c := range pli.Spec.Containers {
-					if c.Name == cs.Name {
-						arg = c.Command[0]
-						if arg == "/hyperkube" {
-							arg = c.Command[1]
-						}
-					}
-				}
-			}
-			script := fmt.Sprintf("bash -euxo pipefail -c \"sudo /etc/kubernetes/rotate-certs/rotate-certs.sh restart_pod_%s %s\"", cri, arg)
-			out, err := ssh.ExecuteRemote(node, script)
-			if err != nil {
-				log.Debugf("Remote command output: %s", out)
-				// Do not error out
-				log.Debugf(err.Error())
-			}
-		}
-	}
-	return nil
-}
-
 func RestartVirtualMachine(client internal.ARMClient, resourceGroupName, vmName string) error {
 	status, err := client.GetVirtualMachinePowerState(resourceGroupName, vmName)
 	if err != nil {
 		return errors.Wrap(err, "fetching virtual machine power state")
 	}
 	if !isVirtualMachineRunning(status) {
-		log.Warnf("Skipping reboot, node %s is not the running state %s", vmName)
-		return nil
+		log.Warnf("Node %s is not the running state %s", vmName, status)
 	}
 	if err := client.RestartVirtualMachine(resourceGroupName, vmName); err != nil {
 		return errors.Wrapf(err, "rebooting remote host %s", vmName)
