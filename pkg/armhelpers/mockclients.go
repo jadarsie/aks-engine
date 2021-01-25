@@ -1074,3 +1074,8 @@ func (mc *MockAKSEngineClient) GetLogAnalyticsWorkspaceInfo(ctx context.Context,
 
 	return "00000000-0000-0000-0000-000000000000", "4D+vyd5/jScBmsAwZOF/0GOBQ5kuFQc9JVaW+HlnJ58cyePJcwTpks+rVmvgcXGmmyujLDNEVPiT8pB274a9Yg==", "westus", nil
 }
+
+//GetVirtualMachinePowerState mock
+func (mc *MockAKSEngineClient) GetVirtualMachinePowerState(ctx context.Context, resourceGroup, name string) (string, error) {
+	return "", nil
+}
