@@ -97,8 +97,8 @@ func deleteDeploymentSATokensAndForceRollout(client internal.KubeClient, ns stri
 			}
 		}
 		// trigger rollout so the deploy replicas mount the newly generated sa token
-		if _, err := client.PatchDeployment(ns, deploy.Name, patch); err != nil {
-			return errors.Wrapf(err, "patching %s deployment %s", ns, deploy.Name)
+		if _, err := client.PatchDeployment(deploy.Namespace, deploy.Name, patch); err != nil {
+			return errors.Wrapf(err, "patching %s deployment %s", deploy.Namespace, deploy.Name)
 		}
 	}
 	return nil
@@ -120,8 +120,8 @@ func deleteDaemonSetSATokensAndForceRollout(client internal.KubeClient, ns strin
 			}
 		}
 		// trigger rollout so the ds replicas mount the newly generated sa token
-		if _, err = client.PatchDaemonSet(ns, ds.Name, patch); err != nil {
-			return errors.Wrapf(err, "patching %s daemonset %s", ns, ds.Name)
+		if _, err = client.PatchDaemonSet(ds.Namespace, ds.Name, patch); err != nil {
+			return errors.Wrapf(err, "patching %s daemonset %s", ds.Namespace, ds.Name)
 		}
 	}
 	return nil
@@ -147,16 +147,16 @@ func deleteSATokensFunc(client internal.KubeClient, ns string) (func(string) err
 		for _, s := range sa.Secrets {
 			err := client.DeleteSecret(&v1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: ns,
+					Namespace: s.Namespace,
 					Name:      s.Name,
 				},
 			})
 			if err != nil && !apierrors.IsNotFound(err) {
-				return errors.Wrapf(err, "deleting %s secret %s", ns, s.Name)
+				return errors.Wrapf(err, "deleting %s secret %s", s.Namespace, s.Name)
 			}
 		}
 		if err := client.DeleteServiceAccount(&sa); err != nil && !apierrors.IsNotFound(err) {
-			return errors.Wrapf(err, "deleting %s service account %s", ns, sa.Name)
+			return errors.Wrapf(err, "deleting %s service account %s", sa.Namespace, sa.Name)
 		}
 		delete(saMap, name)
 		return nil

@@ -768,22 +768,7 @@ func isWindowsAgent(node *ssh.RemoteHost) bool { return node.OperatingSystem == 
 func isLinuxAgent(node *ssh.RemoteHost) bool   { return isLinux(node) && !isMaster(node) }
 
 func (rcc *rotateCertsCmd) getNamespacesWithSATokensToRotate() []string {
-	// TODO parametize addons namespace so hard-coding their names is not required.
-	// TODO maybe add an extra cli param so user can add extra namespaces
-	namespaces := []string{metav1.NamespaceSystem}
-	if rcc.cs.Properties.OrchestratorProfile.KubernetesConfig.IsAddonEnabled(common.DashboardAddonName) {
-		namespaces = append(namespaces, "kubernetes-dashboard")
-	}
-	if rcc.cs.Properties.OrchestratorProfile.KubernetesConfig.IsAddonEnabled(common.AzureArcOnboardingAddonName) {
-		namespaces = append(namespaces, "azure-arc")
-	}
-	if rcc.cs.Properties.OrchestratorProfile.KubernetesConfig.IsAddonEnabled(common.AzurePolicyAddonName) {
-		namespaces = append(namespaces, "gatekeeper-system")
-	}
-	if rcc.cs.Properties.OrchestratorProfile.KubernetesConfig.IsAddonEnabled(common.ScheduledMaintenanceAddonName) {
-		namespaces = append(namespaces, "drainsafe-system")
-	}
-	return namespaces
+	return []string{metav1.NamespaceAll}
 }
 
 func keys(nodes nodeMap) []string {
